@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import users
-from bson.objectid import ObjectId
 import hashlib
 import os
 
@@ -11,14 +10,16 @@ CORS(app)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# 👉 TẠO ADMIN NẾU CHƯA CÓ
-if users.find_one({"username": "admin"}) is None:
-    users.insert_one({
-        "username": "admin",
-        "password": hash_password("123456"),
+# 🔥 ENSURE ADMIN
+users.update_one(
+    {"username": "admin"},
+    {"$set": {
+        "password": hash_password("admin1"),
         "role": "admin"
-    })
-    print("✅ Admin created")
+    }},
+    upsert=True
+)
+print("✅ Admin ensured")
 
 @app.route("/")
 def home():
@@ -28,8 +29,8 @@ def home():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    user = users.find_one({"username": data.get("username")})
 
+    user = users.find_one({"username": data.get("username")})
     if not user:
         return jsonify({"error": "User not found"}), 401
 
@@ -39,20 +40,19 @@ def login():
     return jsonify({
         "username": user["username"],
         "role": user["role"]
-    })
+    }), 200
 
-# ---------- GET USERS (ADMIN) ----------
+# ---------- GET USERS ----------
 @app.route("/users", methods=["GET"])
 def get_users():
-    result = []
-    for u in users.find():
-        result.append({
+    return jsonify([
+        {
             "id": str(u["_id"]),
             "username": u["username"],
             "role": u.get("role", "user")
-        })
-    return jsonify(result)
+        } for u in users.find()
+    ])
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5001))
+    port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
