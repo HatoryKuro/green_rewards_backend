@@ -125,9 +125,7 @@ class AdminHome extends StatelessWidget {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => const ManagementPage(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const Management()),
                         );
                       },
                     ),

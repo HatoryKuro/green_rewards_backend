@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:green_rewards/features/pages/admin_home.dart';
 import '../../core/services/api_service.dart';
-import '../admin/management.dart';
 import '../auth/register.dart';
 import '../pages/user_home.dart';
 

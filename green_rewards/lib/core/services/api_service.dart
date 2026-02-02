@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   static const String baseUrl = "https://green-rewards-backend.onrender.com";
 
-  // ---------- LOGIN ----------
+  // ================== LOGIN ==================
   static Future<Map<String, dynamic>?> login(
     String username,
     String password,
@@ -21,7 +21,7 @@ class ApiService {
     return null;
   }
 
-  // ---------- REGISTER (THÊM EMAIL, KHÔNG ĐỔI FLOW) ----------
+  // ================== REGISTER ==================
   static Future<String?> register({
     required String username,
     required String email,
@@ -47,9 +47,27 @@ class ApiService {
     }
   }
 
-  // ---------- GET USERS ----------
+  // ================== GET USERS ==================
   static Future<List<dynamic>> getUsers() async {
     final res = await http.get(Uri.parse("$baseUrl/users"));
-    return jsonDecode(res.body);
+
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    }
+    return [];
+  }
+
+  // ================== DELETE USER ==================
+  static Future<bool> deleteUser(String userId) async {
+    final res = await http.delete(Uri.parse("$baseUrl/users/$userId"));
+
+    return res.statusCode == 200;
+  }
+
+  // ================== RESET POINT ==================
+  static Future<bool> resetPoint(String userId) async {
+    final res = await http.put(Uri.parse("$baseUrl/users/$userId/reset-point"));
+
+    return res.statusCode == 200;
   }
 }
