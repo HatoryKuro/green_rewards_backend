@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../pages/login.dart';
+import '../../features/auth/login.dart';
 
 class ThemeLoadPage extends StatefulWidget {
   const ThemeLoadPage({Key? key}) : super(key: key);

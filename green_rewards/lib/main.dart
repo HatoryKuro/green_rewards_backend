@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'theme/theme_load.dart'; // 👈 thêm splash screen
+import 'core/theme/theme_load.dart'; // 👈 thêm splash screen
 
 void main() {
   runApp(const MyApp());
