@@ -12,3 +12,9 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# Flutter
+green_rewards/build/
+green_rewards/.dart_tool/
+green_rewards/.idea/
+green_rewards/*.iml
