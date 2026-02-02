@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/services/api_service.dart';
 import '../pages/management.dart';
-import '../auth/register.dart'; // 👈 giữ đúng file bạn đang dùng
+import '../auth/register.dart';
+import '../user/user_home.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -13,15 +14,22 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final userCtrl = TextEditingController();
   final passCtrl = TextEditingController();
-  String error = "";
 
+  // ================= LOGIN =================
   Future<void> login() async {
     final res = await ApiService.login(
       userCtrl.text.trim(),
       passCtrl.text.trim(),
     );
 
-    if (res != null && res["role"] == "admin") {
+    if (res == null) {
+      _showErrorPopup("Sai tài khoản hoặc mật khẩu");
+      return;
+    }
+
+    final role = res["role"];
+
+    if (role == "admin") {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -29,11 +37,108 @@ class _LoginPageState extends State<LoginPage> {
               const ManagementPage(key: ValueKey('management_page')),
         ),
       );
+    } else if (role == "user") {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const UserHome(key: ValueKey('user_home_page')),
+        ),
+      );
     } else {
-      setState(() => error = "Login failed");
+      _showErrorPopup("Role không hợp lệ");
     }
   }
 
+  // ================= POPUP ERROR =================
+  void _showErrorPopup(String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: const [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text("Đăng nhập thất bại"),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= CONFIRM REGISTER =================
+  void _confirmGoRegister() {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.eco, color: Colors.green, size: 28),
+                  const SizedBox(width: 8),
+                  const Text(
+                    "Tạo tài khoản",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "Bạn có chắc muốn chuyển sang trang đăng ký tài khoản không?",
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Hủy"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const Register()),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                      child: const Text("Đồng ý"),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,17 +147,17 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Card(
-              elevation: 8,
+              elevation: 10,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(22),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Image.asset('assets/icon/app_icon2.png', height: 120),
-                    const SizedBox(height: 12),
+                    const Icon(Icons.eco, size: 80, color: Colors.green),
+                    const SizedBox(height: 10),
 
                     const Text(
                       'GreenRewards',
@@ -63,13 +168,18 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 6),
+                    const Text(
+                      "Cùng nhau sống xanh 🌱",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+
+                    const SizedBox(height: 28),
 
                     TextField(
-                      key: const ValueKey('username_field'),
                       controller: userCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Username',
+                        labelText: 'Username / Email / Phone',
                         prefixIcon: Icon(Icons.person),
                       ),
                     ),
@@ -77,7 +187,6 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 16),
 
                     TextField(
-                      key: const ValueKey('password_field'),
                       controller: passCtrl,
                       obscureText: true,
                       decoration: const InputDecoration(
@@ -86,13 +195,15 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 26),
 
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        key: const ValueKey('login_button'),
                         onPressed: login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
                         child: const Text(
                           'ĐĂNG NHẬP',
                           style: TextStyle(fontSize: 16),
@@ -100,28 +211,15 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-                    // ===== NÚT ĐĂNG KÝ (ĐÃ MANG QUA) =====
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const Register()),
-                        );
-                      },
-                      child: const Text('Tạo tài khoản user'),
-                    ),
+                    const SizedBox(height: 12),
 
-                    if (error.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        error,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w500,
-                        ),
+                    TextButton(
+                      onPressed: _confirmGoRegister,
+                      child: const Text(
+                        'Tạo tài khoản user',
+                        style: TextStyle(color: Colors.green),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
