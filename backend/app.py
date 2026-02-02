@@ -7,25 +7,31 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# ---------- HASH ----------
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# 🔥 ENSURE ADMIN
+# ---------- ENSURE ADMIN (GIỮ NGUYÊN FLOW) ----------
 users.update_one(
     {"username": "admin"},
     {"$set": {
+        "username": "admin",
+        "email": "admin@system.com",
+        "phone": "0000000000",
         "password": hash_password("admin1"),
-        "role": "admin"
+        "role": "admin",
+        "isAdmin": True
     }},
     upsert=True
 )
 print("✅ Admin ensured")
 
+# ---------- HOME ----------
 @app.route("/")
 def home():
     return "Green Rewards Backend OK"
 
-# ---------- LOGIN ----------
+# ---------- LOGIN (KHÔNG ĐỤNG) ----------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
@@ -39,20 +45,54 @@ def login():
 
     return jsonify({
         "username": user["username"],
-        "role": user["role"]
+        "role": user.get("role", "user")
     }), 200
 
-# ---------- GET USERS ----------
+# ---------- REGISTER (CHỈ THÊM EMAIL) ----------
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+
+    username = data.get("username")
+    email = data.get("email")
+    phone = data.get("phone")
+    password = data.get("password")
+
+    if not username or not email or not phone or not password:
+        return jsonify({"error": "Thiếu dữ liệu"}), 400
+
+    if users.find_one({"email": email}):
+        return jsonify({"error": "Email đã tồn tại"}), 400
+
+    if users.find_one({"phone": phone}):
+        return jsonify({"error": "SĐT đã tồn tại"}), 400
+
+    users.insert_one({
+        "username": username,
+        "email": email,
+        "phone": phone,
+        "password": hash_password(password),
+        "role": "user",
+        "isAdmin": False
+    })
+
+    return jsonify({"message": "Tạo tài khoản thành công"}), 200
+
+# ---------- GET USERS (GIỮ NGUYÊN) ----------
 @app.route("/users", methods=["GET"])
 def get_users():
     return jsonify([
         {
             "id": str(u["_id"]),
-            "username": u["username"],
-            "role": u.get("role", "user")
+            "username": u.get("username"),
+            "email": u.get("email"),
+            "phone": u.get("phone"),
+            "role": u.get("role", "user"),
+            "isAdmin": u.get("isAdmin", False)
         } for u in users.find()
     ])
 
+# ---------- RUN ----------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
