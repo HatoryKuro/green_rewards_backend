@@ -11,44 +11,59 @@ CORS(app)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ---------- ENSURE ADMIN (GIỮ NGUYÊN FLOW) ----------
-users.update_one(
-    {"username": "admin"},
-    {"$set": {
+# ---------- ENSURE ADMIN (CHỈ TẠO NẾU CHƯA CÓ – KHÔNG GHI ĐÈ) ----------
+admin = users.find_one({"username": "admin"})
+if not admin:
+    users.insert_one({
         "username": "admin",
         "email": "admin@system.com",
         "phone": "0000000000",
         "password": hash_password("admin1"),
         "role": "admin",
         "isAdmin": True
-    }},
-    upsert=True
-)
-print("✅ Admin ensured")
+    })
+    print("✅ Admin created")
+else:
+    print("ℹ️ Admin already exists – not overwritten")
 
 # ---------- HOME ----------
 @app.route("/")
 def home():
     return "Green Rewards Backend OK"
 
-# ---------- LOGIN (KHÔNG ĐỤNG) ----------
+# ---------- LOGIN (USERNAME / EMAIL / PHONE – GIỮ FLOW) ----------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
+    identity = data.get("username")  # KHÔNG đổi key để khỏi phá Flutter
+    password = data.get("password")
 
-    user = users.find_one({"username": data.get("username")})
+    if not identity or not password:
+        return jsonify({"error": "Thiếu dữ liệu"}), 400
+
+    user = users.find_one({
+        "$or": [
+            {"username": identity},
+            {"email": identity},
+            {"phone": identity}
+        ]
+    })
+
     if not user:
         return jsonify({"error": "User not found"}), 401
 
-    if user["password"] != hash_password(data.get("password")):
+    if user["password"] != hash_password(password):
         return jsonify({"error": "Wrong password"}), 401
 
     return jsonify({
-        "username": user["username"],
-        "role": user.get("role", "user")
+        "username": user.get("username"),
+        "email": user.get("email"),
+        "phone": user.get("phone"),
+        "role": user.get("role", "user"),
+        "isAdmin": user.get("isAdmin", False)
     }), 200
 
-# ---------- REGISTER (CHỈ THÊM EMAIL) ----------
+# ---------- REGISTER (THÊM EMAIL – GIỮ NGUYÊN FLOW) ----------
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -60,6 +75,9 @@ def register():
 
     if not username or not email or not phone or not password:
         return jsonify({"error": "Thiếu dữ liệu"}), 400
+
+    if users.find_one({"username": username}):
+        return jsonify({"error": "Username đã tồn tại"}), 400
 
     if users.find_one({"email": email}):
         return jsonify({"error": "Email đã tồn tại"}), 400
