@@ -11,7 +11,7 @@ CORS(app)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ---------- ENSURE ADMIN (CHỈ TẠO NẾU CHƯA CÓ – KHÔNG GHI ĐÈ) ----------
+# ---------- ENSURE ADMIN ----------
 admin = users.find_one({"username": "admin"})
 if not admin:
     users.insert_one({
@@ -20,7 +20,8 @@ if not admin:
         "phone": "0000000000",
         "password": hash_password("admin1"),
         "role": "admin",
-        "isAdmin": True
+        "isAdmin": True,
+        "point": 0
     })
     print("✅ Admin created")
 else:
@@ -31,11 +32,11 @@ else:
 def home():
     return "Green Rewards Backend OK"
 
-# ---------- LOGIN (USERNAME / EMAIL / PHONE – GIỮ FLOW) ----------
+# ---------- LOGIN ----------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    identity = data.get("username")  # KHÔNG đổi key để khỏi phá Flutter
+    identity = data.get("username")
     password = data.get("password")
 
     if not identity or not password:
@@ -60,10 +61,11 @@ def login():
         "email": user.get("email"),
         "phone": user.get("phone"),
         "role": user.get("role", "user"),
-        "isAdmin": user.get("isAdmin", False)
+        "isAdmin": user.get("isAdmin", False),
+        "point": user.get("point", 0)
     }), 200
 
-# ---------- REGISTER (THÊM EMAIL – GIỮ NGUYÊN FLOW) ----------
+# ---------- REGISTER ----------
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -91,12 +93,13 @@ def register():
         "phone": phone,
         "password": hash_password(password),
         "role": "user",
-        "isAdmin": False
+        "isAdmin": False,
+        "point": 0
     })
 
     return jsonify({"message": "Tạo tài khoản thành công"}), 200
 
-# ---------- GET USERS (GIỮ NGUYÊN) ----------
+# ---------- GET USERS ----------
 @app.route("/users", methods=["GET"])
 def get_users():
     return jsonify([
@@ -106,7 +109,8 @@ def get_users():
             "email": u.get("email"),
             "phone": u.get("phone"),
             "role": u.get("role", "user"),
-            "isAdmin": u.get("isAdmin", False)
+            "isAdmin": u.get("isAdmin", False),
+            "point": u.get("point", 0)
         } for u in users.find()
     ])
 

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:green_rewards/features/pages/admin_home.dart';
 import '../../core/services/api_service.dart';
-import '../pages/management.dart';
+import '../admin/management.dart';
 import '../auth/register.dart';
-import '../user/user_home.dart';
+import '../pages/user_home.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -32,17 +33,12 @@ class _LoginPageState extends State<LoginPage> {
     if (role == "admin") {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const ManagementPage(key: ValueKey('management_page')),
-        ),
+        MaterialPageRoute(builder: (_) => const AdminHome()),
       );
     } else if (role == "user") {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const UserHome(key: ValueKey('user_home_page')),
-        ),
+        MaterialPageRoute(builder: (_) => const UserHome()),
       );
     } else {
       _showErrorPopup("Role không hợp lệ");
@@ -156,8 +152,8 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.eco, size: 80, color: Colors.green),
-                    const SizedBox(height: 10),
+                    Image.asset('assets/icon/app_icon2.png', height: 120),
+                    const SizedBox(height: 12),
 
                     const Text(
                       'GreenRewards',

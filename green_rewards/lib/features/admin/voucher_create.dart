@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class ScanQR extends StatelessWidget {
-  const ScanQR({super.key});
+class CreateVoucher extends StatelessWidget {
+  const CreateVoucher({super.key});
 
   @override
   Widget build(BuildContext context) {

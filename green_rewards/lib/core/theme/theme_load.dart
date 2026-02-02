@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../features/auth/login.dart';
 
@@ -9,18 +10,33 @@ class ThemeLoadPage extends StatefulWidget {
   State<ThemeLoadPage> createState() => _ThemeLoadPageState();
 }
 
-class _ThemeLoadPageState extends State<ThemeLoadPage> {
+class _ThemeLoadPageState extends State<ThemeLoadPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
   @override
   void initState() {
     super.initState();
 
-    // Delay 2 giây rồi chuyển sang LoginPage
+    // ⏱ hiệu ứng xoay
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
+    // ⏭ delay sang Login
     Timer(const Duration(seconds: 5), () {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -33,11 +49,7 @@ class _ThemeLoadPageState extends State<ThemeLoadPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF43A047), // xanh lá đậm
-              Color(0xFF66BB6A), // xanh lá vừa
-              Color(0xFFA5D6A7), // xanh lá nhạt
-            ],
+            colors: [Color(0xFF43A047), Color(0xFF66BB6A), Color(0xFFA5D6A7)],
           ),
         ),
         child: Stack(
@@ -59,21 +71,71 @@ class _ThemeLoadPageState extends State<ThemeLoadPage> {
               child: Icon(Icons.local_florist, size: 50, color: Colors.white24),
             ),
 
-            // 🌱 Logo trung tâm
+            // 🌱 LOADING CENTER
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // LOGO
                   Image.asset(
                     'assets/images/logo_truong.png',
-                    width: 160,
-                    height: 160,
+                    width: 150,
+                    height: 150,
                     fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 20),
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    strokeWidth: 3,
+                  const SizedBox(height: 30),
+
+                  // 🌿 VÒNG XOAY LÁ
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: AnimatedBuilder(
+                      animation: _controller,
+                      builder: (_, child) {
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // vòng tròn mờ
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.4),
+                                  width: 3,
+                                ),
+                              ),
+                            ),
+
+                            // icon lá xoay quanh vòng
+                            Transform.rotate(
+                              angle: _controller.value * 2 * pi,
+                              child: Transform.translate(
+                                offset: const Offset(0, -50),
+                                child: const Icon(
+                                  Icons.eco,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  const Text(
+                    'Loading...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
