@@ -71,4 +71,28 @@ class ApiService {
 
     return res.statusCode == 200;
   }
+
+  // ================== ADD POINT BY QR ==================
+  static Future<String?> addPointByQR({
+    required String username,
+    required String partner,
+    required String billCode,
+    required int point,
+  }) async {
+    final res = await http.post(
+      Uri.parse("$baseUrl/scan/add-point"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "username": username,
+        "partner": partner,
+        "billCode": billCode,
+        "point": point,
+      }),
+    );
+
+    if (res.statusCode == 200) return null;
+
+    final data = jsonDecode(res.body);
+    return data["error"] ?? "Add point failed";
+  }
 }

@@ -98,6 +98,52 @@ def delete_user(user_id):
         return jsonify({"message": "Deleted"}), 200
     return jsonify({"error": "Not found"}), 404
 
+# ---------- ADD POINT BY QR ----------
+@app.route("/scan/add-point", methods=["POST"])
+def add_point_by_qr():
+    data = request.json
+
+    username = data.get("username")
+    partner = data.get("partner")
+    bill_code = data.get("billCode")
+    point = int(data.get("point", 0))
+
+    if not username or not bill_code or point <= 0:
+        return jsonify({"error": "Invalid data"}), 400
+
+    user = users.find_one({"username": username})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # init fields if missing
+    if "usedBills" not in user:
+        user["usedBills"] = []
+    if "history" not in user:
+        user["history"] = []
+
+    # check bill used
+    if bill_code in user["usedBills"]:
+        return jsonify({"error": "Bill already used"}), 400
+
+    users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$inc": {"point": point},
+            "$push": {
+                "usedBills": bill_code,
+                "history": {
+                    "type": "add",
+                    "partner": partner,
+                    "bill": bill_code,
+                    "point": point
+                }
+            }
+        }
+    )
+
+    return jsonify({"message": "OK"}), 200
+
+
 # ---------- RUN ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))

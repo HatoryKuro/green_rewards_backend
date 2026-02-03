@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../core/models/model_user.dart';
 
 class QrCodeUserPage extends StatelessWidget {
   const QrCodeUserPage({super.key});
