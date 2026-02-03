@@ -48,7 +48,7 @@ class _ManagementState extends State<Management> {
 
     if (ok != true) return;
 
-    final success = await ApiService.deleteUser(user["_id"]);
+    final success = await ApiService.deleteUser(user["id"]);
 
     if (!mounted) return; // 🔥 FIX CRASH
 
