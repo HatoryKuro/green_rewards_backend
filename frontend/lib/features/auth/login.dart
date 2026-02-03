@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:green_rewards/features/pages/admin_home.dart';
 import '../../core/services/api_service.dart';
 import '../auth/register.dart';
@@ -22,12 +24,22 @@ class _LoginPageState extends State<LoginPage> {
       passCtrl.text.trim(),
     );
 
+    // 🔥 FIX LỖI CONTEXT CHẾT
+    if (!mounted) return;
+
     if (res == null) {
       _showErrorPopup("Sai tài khoản hoặc mật khẩu");
       return;
     }
 
     final role = res["role"];
+    final username = res["username"];
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username', username);
+
+    // 🔥 FIX TIẾP (sau await)
+    if (!mounted) return;
 
     if (role == "admin") {
       Navigator.pushReplacement(
@@ -46,6 +58,8 @@ class _LoginPageState extends State<LoginPage> {
 
   // ================= POPUP ERROR =================
   void _showErrorPopup(String message) {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -70,6 +84,8 @@ class _LoginPageState extends State<LoginPage> {
 
   // ================= CONFIRM REGISTER =================
   void _confirmGoRegister() {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -153,7 +169,6 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     Image.asset('assets/icon/app_icon2.png', height: 120),
                     const SizedBox(height: 12),
-
                     const Text(
                       'GreenRewards',
                       style: TextStyle(
@@ -162,15 +177,12 @@ class _LoginPageState extends State<LoginPage> {
                         color: Colors.green,
                       ),
                     ),
-
                     const SizedBox(height: 6),
                     const Text(
                       "Cùng nhau sống xanh 🌱",
                       style: TextStyle(color: Colors.grey),
                     ),
-
                     const SizedBox(height: 28),
-
                     TextField(
                       controller: userCtrl,
                       decoration: const InputDecoration(
@@ -178,9 +190,7 @@ class _LoginPageState extends State<LoginPage> {
                         prefixIcon: Icon(Icons.person),
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     TextField(
                       controller: passCtrl,
                       obscureText: true,
@@ -189,9 +199,7 @@ class _LoginPageState extends State<LoginPage> {
                         prefixIcon: Icon(Icons.lock),
                       ),
                     ),
-
                     const SizedBox(height: 26),
-
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -205,9 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 12),
-
                     TextButton(
                       onPressed: _confirmGoRegister,
                       child: const Text(

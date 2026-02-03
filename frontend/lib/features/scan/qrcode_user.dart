@@ -1,13 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class QrCodeUserPage extends StatelessWidget {
+class QrCodeUserPage extends StatefulWidget {
   const QrCodeUserPage({super.key});
 
   @override
+  State<QrCodeUserPage> createState() => _QrCodeUserPageState();
+}
+
+class _QrCodeUserPageState extends State<QrCodeUserPage> {
+  String? username;
+
+  @override
+  void initState() {
+    super.initState();
+    loadUser();
+  }
+
+  Future<void> loadUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedUser = prefs.getString('username');
+
+    if (!mounted) return;
+
+    setState(() {
+      username = savedUser;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    /// ✅ FORMAT PHẢI KHỚP SCAN_PAGE
-    final qrData = '...';
+    if (username == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    /// FORMAT KHỚP SCAN_PAGE
+    final qrData = 'USERQR|$username';
 
     return Scaffold(
       appBar: AppBar(
@@ -45,15 +74,16 @@ class QrCodeUserPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
+                    Text(
+                      username!,
+                      style: const TextStyle(color: Colors.black54),
+                    ),
                     const SizedBox(height: 20),
-
-                    /// QR
                     QrImageView(
                       data: qrData,
                       size: 220,
                       backgroundColor: Colors.white,
                     ),
-
                     const SizedBox(height: 16),
                     const Text(
                       'Đưa mã này cho cửa hàng để tích điểm',

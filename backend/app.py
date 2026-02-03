@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import users
-from bson.objectid import ObjectId   # ✅ BẮT BUỘC
+from bson.objectid import ObjectId
 import hashlib
 import os
 
@@ -23,9 +23,6 @@ if not admin:
         "isAdmin": True,
         "point": 0
     })
-    print("✅ Admin created")
-else:
-    print("ℹ️ Admin already exists – not overwritten")
 
 # ---------- LOGIN ----------
 @app.route("/login", methods=["POST"])
@@ -79,7 +76,7 @@ def register():
 def get_users():
     return jsonify([
         {
-            "id": str(u["_id"]),   # ✅ DÙNG ID
+            "id": str(u["_id"]),
             "username": u["username"],
             "email": u["email"],
             "phone": u["phone"],
@@ -103,25 +100,29 @@ def delete_user(user_id):
 def add_point_by_qr():
     data = request.json
 
-    username = data.get("username")
+    raw_username = data.get("username")
     partner = data.get("partner")
     bill_code = data.get("billCode")
     point = int(data.get("point", 0))
 
-    if not username or not bill_code or point <= 0:
+    if not raw_username or not bill_code or point <= 0:
         return jsonify({"error": "Invalid data"}), 400
+
+    # ✅ FIX QUAN TRỌNG: CẮT USERQR|
+    if raw_username.startswith("USERQR|"):
+        username = raw_username.split("|")[1]
+    else:
+        username = raw_username
 
     user = users.find_one({"username": username})
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # init fields if missing
     if "usedBills" not in user:
         user["usedBills"] = []
     if "history" not in user:
         user["history"] = []
 
-    # check bill used
     if bill_code in user["usedBills"]:
         return jsonify({"error": "Bill already used"}), 400
 
@@ -142,7 +143,6 @@ def add_point_by_qr():
     )
 
     return jsonify({"message": "OK"}), 200
-
 
 # ---------- RUN ----------
 if __name__ == "__main__":
