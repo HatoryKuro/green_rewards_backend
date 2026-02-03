@@ -61,7 +61,8 @@ class ApiService {
   static Future<bool> deleteUser(String userId) async {
     final res = await http.delete(Uri.parse("$baseUrl/users/$userId"));
 
-    return res.statusCode == 200;
+    // chấp nhận 200 hoặc 204
+    return res.statusCode == 200 || res.statusCode == 204;
   }
 
   // ================== RESET POINT ==================

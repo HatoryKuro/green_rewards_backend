@@ -17,15 +17,21 @@ class _ManagementState extends State<Management> {
     _futureUsers = ApiService.getUsers();
   }
 
+  void reload() {
+    setState(() {
+      _futureUsers = ApiService.getUsers();
+    });
+  }
+
   /// =======================
-  /// XOÁ USER (CÓ XÁC NHẬN)
+  /// XOÁ USER
   /// =======================
   Future<void> confirmDeleteUser(Map user) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Xoá user'),
-        content: Text('Bạn có chắc muốn xoá user "${user["username"]}" không?'),
+        content: Text('Bạn có chắc muốn xoá "${user["username"]}" không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -40,25 +46,39 @@ class _ManagementState extends State<Management> {
       ),
     );
 
-    if (ok == true) {
-      /// TODO: gọi API xoá user khi backend có
-      setState(() {
-        _futureUsers = ApiService.getUsers();
-      });
+    if (ok != true) return;
+
+    final success = await ApiService.deleteUser(user["_id"]);
+
+    if (!mounted) return; // 🔥 FIX CRASH
+
+    if (success) {
+      reload();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xoá user'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Xoá thất bại'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   /// =======================
-  /// RESET ĐIỂM (CÓ XÁC NHẬN)
+  /// RESET POINT
   /// =======================
   Future<void> confirmResetPoint(Map user) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reset điểm'),
-        content: Text(
-          'Bạn có chắc muốn reset toàn bộ điểm của "${user["username"]}" không?',
-        ),
+        content: Text('Reset điểm của "${user["username"]}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -72,15 +92,14 @@ class _ManagementState extends State<Management> {
       ),
     );
 
-    if (ok == true) {
-      /// TODO: gọi API reset point khi backend có
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã reset điểm cho ${user["username"]}'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
+    if (ok != true || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã reset điểm cho ${user["username"]}'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   @override
@@ -89,10 +108,7 @@ class _ManagementState extends State<Management> {
       backgroundColor: const Color(0xFFE8F5E9),
       appBar: AppBar(
         backgroundColor: Colors.green,
-        title: const Text(
-          'Quản lý User',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Quản lý User'),
         centerTitle: true,
       ),
       body: FutureBuilder(
@@ -116,54 +132,19 @@ class _ManagementState extends State<Management> {
               final point = u["point"] ?? 0;
 
               return Card(
-                elevation: 3,
                 margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.green.shade100,
-                    child: const Icon(Icons.person, color: Colors.green),
-                  ),
-                  title: Text(
-                    u["username"],
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text(u["phone"] ?? ''),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Điểm: $point',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Role: ${u["role"]}',
-                        style: TextStyle(
-                          color: u["role"] == "admin"
-                              ? Colors.red
-                              : Colors.grey[700],
-                        ),
-                      ),
-                    ],
+                  title: Text(u["username"]),
+                  subtitle: Text(
+                    'Phone: ${u["phone"]}\nĐiểm: $point\nRole: ${u["role"]}',
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      /// RESET ĐIỂM
                       IconButton(
                         icon: const Icon(Icons.refresh, color: Colors.orange),
                         onPressed: () => confirmResetPoint(u),
                       ),
-
-                      /// XOÁ USER (KHÔNG CHO XOÁ ADMIN)
                       if (u["role"] != "admin")
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
