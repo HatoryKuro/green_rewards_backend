@@ -18,6 +18,7 @@ class ApiService {
     if (res.statusCode == 200) {
       return jsonDecode(res.body);
     }
+
     return null;
   }
 
@@ -41,39 +42,55 @@ class ApiService {
 
     if (res.statusCode == 200) {
       return null;
-    } else {
-      final data = jsonDecode(res.body);
-      return data["error"] ?? "Register failed";
     }
+
+    final data = jsonDecode(res.body);
+    return data["error"] ?? "Register failed";
   }
 
   // ================== GET USERS ==================
   static Future<List<dynamic>> getUsers() async {
-    final res = await http.get(Uri.parse("$baseUrl/users"));
+    final res = await http.get(
+      Uri.parse("$baseUrl/users"),
+      headers: {"Content-Type": "application/json"},
+    );
 
     if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+
+      if (data is List) {
+        return data;
+      }
     }
+
     return [];
   }
 
   // ================== DELETE USER ==================
   static Future<bool> deleteUser(String userId) async {
-    final res = await http.delete(Uri.parse("$baseUrl/users/$userId"));
+    final res = await http.delete(
+      Uri.parse("$baseUrl/users/$userId"),
+      headers: {"Content-Type": "application/json"},
+    );
 
-    // chấp nhận 200 hoặc 204
     return res.statusCode == 200 || res.statusCode == 204;
   }
 
   // ================== RESET POINT ==================
   static Future<bool> resetPoint(String userId) async {
-    final res = await http.put(Uri.parse("$baseUrl/users/$userId/reset-point"));
+    final res = await http.put(
+      Uri.parse("$baseUrl/users/$userId/reset-point"),
+      headers: {"Content-Type": "application/json"},
+    );
 
     return res.statusCode == 200;
   }
 
   // ================== ADD POINT BY QR ==================
-  static Future<String?> addPointByQR({
+  /// 🔥 FIX QUAN TRỌNG:
+  /// - Backend trả về user + point mới
+  /// - Frontend có thể reload UI chính xác
+  static Future<Map<String, dynamic>?> addPointByQR({
     required String username,
     required String partner,
     required String billCode,
@@ -90,9 +107,15 @@ class ApiService {
       }),
     );
 
-    if (res.statusCode == 200) return null;
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    }
 
-    final data = jsonDecode(res.body);
-    return data["error"] ?? "Add point failed";
+    try {
+      final data = jsonDecode(res.body);
+      throw data["error"] ?? "Add point failed";
+    } catch (_) {
+      throw "Add point failed";
+    }
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/services/api_service.dart';
+import '../scan/qrcode_scan.dart'; // 👈 THÊM
 
 class Management extends StatefulWidget {
   const Management({Key? key}) : super(key: key);
@@ -21,6 +22,21 @@ class _ManagementState extends State<Management> {
     setState(() {
       _futureUsers = ApiService.getUsers();
     });
+  }
+
+  /// =======================
+  /// MỞ TRANG QUÉT QR
+  /// =======================
+  Future<void> openScan() async {
+    final reloadResult = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanQR()),
+    );
+
+    // 🔥 QUÉT XONG → LOAD LẠI USERS
+    if (reloadResult == true && mounted) {
+      reload();
+    }
   }
 
   /// =======================
@@ -50,7 +66,7 @@ class _ManagementState extends State<Management> {
 
     final success = await ApiService.deleteUser(user["id"]);
 
-    if (!mounted) return; // 🔥 FIX CRASH
+    if (!mounted) return;
 
     if (success) {
       reload();
@@ -71,7 +87,7 @@ class _ManagementState extends State<Management> {
   }
 
   /// =======================
-  /// RESET POINT
+  /// RESET POINT (UI ONLY)
   /// =======================
   Future<void> confirmResetPoint(Map user) async {
     final ok = await showDialog<bool>(
@@ -110,6 +126,13 @@ class _ManagementState extends State<Management> {
         backgroundColor: Colors.green,
         title: const Text('Quản lý User'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: openScan, // 🔥 QUÉT QR
+          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: reload),
+        ],
       ),
       body: FutureBuilder(
         future: _futureUsers,
@@ -136,7 +159,9 @@ class _ManagementState extends State<Management> {
                 child: ListTile(
                   title: Text(u["username"]),
                   subtitle: Text(
-                    'Phone: ${u["phone"]}\nĐiểm: $point\nRole: ${u["role"]}',
+                    'Phone: ${u["phone"]}\n'
+                    'Điểm: $point\n'
+                    'Role: ${u["role"]}',
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
