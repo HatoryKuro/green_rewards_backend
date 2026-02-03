@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class PartnerListPage extends StatefulWidget {
-  const PartnerListPage({super.key});
+class PartnerList extends StatefulWidget {
+  const PartnerList({super.key});
 
   @override
-  State<PartnerListPage> createState() => _PartnerListPageState();
+  State<PartnerList> createState() => _PartnerListState();
 }
 
-class _PartnerListPageState extends State<PartnerListPage> {
+class _PartnerListState extends State<PartnerList> {
   int expandedIndex = -1;
 
   final List<Map<String, String>> partners = [

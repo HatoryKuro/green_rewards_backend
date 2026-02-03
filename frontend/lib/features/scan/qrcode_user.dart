@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class QrCodeUserPage extends StatefulWidget {
-  const QrCodeUserPage({super.key});
+class QrCodeUser extends StatefulWidget {
+  const QrCodeUser({super.key});
 
   @override
-  State<QrCodeUserPage> createState() => _QrCodeUserPageState();
+  State<QrCodeUser> createState() => _QrCodeUserState();
 }
 
-class _QrCodeUserPageState extends State<QrCodeUserPage> {
+class _QrCodeUserState extends State<QrCodeUser> {
   String? username;
 
   @override
