@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/services/api_service.dart';
-import '../scan/qrcode_scan.dart'; // 👈 THÊM
+import '../scan/qrcode_scan.dart';
 
 class Management extends StatefulWidget {
   const Management({Key? key}) : super(key: key);
@@ -33,7 +33,6 @@ class _ManagementState extends State<Management> {
       MaterialPageRoute(builder: (_) => const ScanQR()),
     );
 
-    // 🔥 QUÉT XONG → LOAD LẠI USERS
     if (reloadResult == true && mounted) {
       reload();
     }
@@ -74,13 +73,6 @@ class _ManagementState extends State<Management> {
         const SnackBar(
           content: Text('Đã xoá user'),
           backgroundColor: Colors.green,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Xoá thất bại'),
-          backgroundColor: Colors.red,
         ),
       );
     }
@@ -129,30 +121,31 @@ class _ManagementState extends State<Management> {
         actions: [
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
-            onPressed: openScan, // 🔥 QUÉT QR
+            onPressed: openScan,
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: reload),
         ],
       ),
-      body: FutureBuilder(
+      body: FutureBuilder<List<dynamic>>(
         future: _futureUsers,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('Chưa có user'));
           }
 
-          final users = snapshot.data as List;
+          final users = snapshot.data!;
 
           return ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: users.length,
             itemBuilder: (_, i) {
               final u = users[i];
-              final point = u["point"] ?? 0;
+              final int point = u["point"] ?? 0;
+              final bool isAdmin = u["isAdmin"] == true;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -161,7 +154,7 @@ class _ManagementState extends State<Management> {
                   subtitle: Text(
                     'Phone: ${u["phone"]}\n'
                     'Điểm: $point\n'
-                    'Role: ${u["role"]}',
+                    'Role: ${isAdmin ? "admin" : "user"}',
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -170,7 +163,7 @@ class _ManagementState extends State<Management> {
                         icon: const Icon(Icons.refresh, color: Colors.orange),
                         onPressed: () => confirmResetPoint(u),
                       ),
-                      if (u["role"] != "admin")
+                      if (!isAdmin)
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
                           onPressed: () => confirmDeleteUser(u),

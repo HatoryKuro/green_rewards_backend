@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/api_service.dart';
 
 class ScanQR extends StatefulWidget {
   const ScanQR({super.key});
@@ -37,71 +37,66 @@ class _ScanPageState extends State<ScanQR> {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      /// 🔥 GỌI API THAY VÌ SHAREDPREFERENCES
+      final res = await ApiService.addPointByQR(
+        username: username,
+        partner: result.partner,
+        billCode: result.billCode,
+        point: result.point,
+      );
 
-    /// ===== CỘNG ĐIỂM =====
-    final current = prefs.getInt('point_$username') ?? 0;
-    await prefs.setInt('point_$username', current + result.point);
+      if (!mounted) return;
 
-    /// ===== LƯU BILL =====
-    final billKey = 'bills_${result.partner}';
-    final bills = prefs.getStringList(billKey) ?? [];
-    bills.add(result.billCode);
-    await prefs.setStringList(billKey, bills);
-
-    /// ===== HISTORY =====
-    final historyKey = 'history_$username';
-    final history = prefs.getStringList(historyKey) ?? [];
-    history.add(
-      jsonEncode({
-        'type': 'add',
-        'point': result.point,
-        'message':
-            '${result.partner} • Bill ${result.billCode} • +${result.point} điểm',
-        'time': DateTime.now().toString().substring(0, 19),
-      }),
-    );
-    await prefs.setStringList(historyKey, history);
-
-    /// ===== POPUP THÀNH CÔNG =====
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.all(24),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.eco, color: Colors.green, size: 48),
-            const SizedBox(height: 12),
-            const Text(
-              'Cộng điểm thành công 🎉',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '+${result.point} điểm cho $username',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          contentPadding: const EdgeInsets.all(24),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.eco, color: Colors.green, size: 48),
+              const SizedBox(height: 12),
+              const Text(
+                'Cộng điểm thành công 🎉',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Đóng'),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                '+${result.point} điểm cho $username',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Tổng điểm: ${res["point"]}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Đóng'),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
 
-    /// 🔙 QUAY VỀ ADMIN PAGE
-    if (mounted) Navigator.pop(context);
+      /// 🔙 QUAY VỀ MANAGEMENT → reload
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      showMsg('❌ Lỗi cộng điểm: $e');
+      scanned = false;
+    }
   }
 
   void showMsg(String msg) {
@@ -204,12 +199,6 @@ class _AddPointDialogState extends State<_AddPointDialog> {
 
   int calcPoint(int money) => (money ~/ 1000) * 2;
 
-  Future<bool> isBillUsed() async {
-    final prefs = await SharedPreferences.getInstance();
-    final bills = prefs.getStringList('bills_$partner') ?? [];
-    return bills.contains(billController.text.trim());
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -268,16 +257,9 @@ class _AddPointDialogState extends State<_AddPointDialog> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          onPressed: () async {
+          onPressed: () {
             final money = int.tryParse(moneyController.text) ?? 0;
             if (money <= 0 || billController.text.isEmpty) return;
-
-            if (await isBillUsed()) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('❌ Bill đã được dùng')),
-              );
-              return;
-            }
 
             Navigator.pop(
               context,

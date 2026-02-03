@@ -18,7 +18,6 @@ class ApiService {
     if (res.statusCode == 200) {
       return jsonDecode(res.body);
     }
-
     return null;
   }
 
@@ -40,9 +39,7 @@ class ApiService {
       }),
     );
 
-    if (res.statusCode == 200) {
-      return null;
-    }
+    if (res.statusCode == 200) return null;
 
     final data = jsonDecode(res.body);
     return data["error"] ?? "Register failed";
@@ -57,12 +54,8 @@ class ApiService {
 
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
-
-      if (data is List) {
-        return data;
-      }
+      if (data is List) return data;
     }
-
     return [];
   }
 
@@ -87,10 +80,10 @@ class ApiService {
   }
 
   // ================== ADD POINT BY QR ==================
-  /// 🔥 FIX QUAN TRỌNG:
-  /// - Backend trả về user + point mới
-  /// - Frontend có thể reload UI chính xác
-  static Future<Map<String, dynamic>?> addPointByQR({
+  /// 🔥 API CHUẨN:
+  /// - Backend phải $inc point
+  /// - Trả về point MỚI
+  static Future<Map<String, dynamic>> addPointByQR({
     required String username,
     required String partner,
     required String billCode,
@@ -111,11 +104,7 @@ class ApiService {
       return jsonDecode(res.body);
     }
 
-    try {
-      final data = jsonDecode(res.body);
-      throw data["error"] ?? "Add point failed";
-    } catch (_) {
-      throw "Add point failed";
-    }
+    final data = jsonDecode(res.body);
+    throw data["error"] ?? "Add point failed";
   }
 }
