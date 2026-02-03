@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../auth/login.dart';
 import '../../features/admin/voucher_create.dart';
 import '../admin/management.dart';
-import '../admin/scan_qr.dart';
+import '../scan/qrcode_scan.dart';
 import '../other/contact.dart';
 import '../admin/voucher_cotroll.dart';
 
