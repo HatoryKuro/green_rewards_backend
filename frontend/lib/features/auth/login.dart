@@ -209,7 +209,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         child: const Text(
                           'ĐĂNG NHẬP',
-                          style: TextStyle(fontSize: 16),
+                          style: TextStyle(fontSize: 16, color: Colors.white),
                         ),
                       ),
                     ),

@@ -8,10 +8,21 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# =========================
+# UTILS
+# =========================
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ---------- ENSURE ADMIN ----------
+def safe_int(value):
+    try:
+        return int(value)
+    except:
+        return 0
+
+# =========================
+# ENSURE ADMIN
+# =========================
 admin = users.find_one({"username": "admin"})
 if not admin:
     users.insert_one({
@@ -21,10 +32,14 @@ if not admin:
         "password": hash_password("admin1"),
         "role": "admin",
         "isAdmin": True,
-        "point": 0
+        "point": 0,
+        "usedBills": [],
+        "history": []
     })
 
-# ---------- LOGIN ----------
+# =========================
+# LOGIN
+# =========================
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
@@ -48,10 +63,12 @@ def login():
         "phone": user["phone"],
         "role": user.get("role", "user"),
         "isAdmin": user.get("isAdmin", False),
-        "point": user.get("point", 0)
+        "point": safe_int(user.get("point", 0))
     }), 200
 
-# ---------- REGISTER ----------
+# =========================
+# REGISTER
+# =========================
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -66,36 +83,63 @@ def register():
         "password": hash_password(data["password"]),
         "role": "user",
         "isAdmin": False,
-        "point": 0
+        "point": 0,
+        "usedBills": [],
+        "history": []
     })
 
     return jsonify({"message": "OK"}), 200
 
-# ---------- GET USERS ----------
+# =========================
+# GET USERS  ✅ FIX POINT
+# =========================
 @app.route("/users", methods=["GET"])
 def get_users():
-    return jsonify([
-        {
+    result = []
+
+    for u in users.find():
+        result.append({
             "id": str(u["_id"]),
-            "username": u["username"],
-            "email": u["email"],
-            "phone": u["phone"],
+            "username": u.get("username"),
+            "email": u.get("email"),
+            "phone": u.get("phone"),
             "role": u.get("role", "user"),
             "isAdmin": u.get("isAdmin", False),
-            "point": u.get("point", 0)
-        } for u in users.find()
-    ])
+            "point": safe_int(u.get("point", 0))
+        })
 
-# ---------- DELETE USER ----------
+    return jsonify(result), 200
+
+# =========================
+# DELETE USER
+# =========================
 @app.route("/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
     result = users.delete_one({"_id": ObjectId(user_id)})
 
     if result.deleted_count == 1:
         return jsonify({"message": "Deleted"}), 200
+
     return jsonify({"error": "Not found"}), 404
 
-# ---------- ADD POINT BY QR ----------
+# =========================
+# RESET POINT  ✅ BỔ SUNG (FLUTTER ĐANG GỌI)
+# =========================
+@app.route("/users/<user_id>/reset-point", methods=["PUT"])
+def reset_point(user_id):
+    result = users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"point": 0}}
+    )
+
+    if result.matched_count == 0:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({"message": "Point reset"}), 200
+
+# =========================
+# ADD POINT BY QR
+# =========================
 @app.route("/scan/add-point", methods=["POST"])
 def add_point_by_qr():
     data = request.json
@@ -103,14 +147,14 @@ def add_point_by_qr():
     raw_username = data.get("username")
     partner = data.get("partner")
     bill_code = data.get("billCode")
-    point = int(data.get("point", 0))
+    point = safe_int(data.get("point", 0))
 
     if not raw_username or not bill_code or point <= 0:
         return jsonify({"error": "Invalid data"}), 400
 
-    # ✅ FIX QUAN TRỌNG: CẮT USERQR|
+    # ✅ CẮT USERQR|
     if raw_username.startswith("USERQR|"):
-        username = raw_username.split("|")[1]
+        username = raw_username.split("|", 1)[1]
     else:
         username = raw_username
 
@@ -118,12 +162,10 @@ def add_point_by_qr():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    if "usedBills" not in user:
-        user["usedBills"] = []
-    if "history" not in user:
-        user["history"] = []
+    used_bills = user.get("usedBills", [])
+    history = user.get("history", [])
 
-    if bill_code in user["usedBills"]:
+    if bill_code in used_bills:
         return jsonify({"error": "Bill already used"}), 400
 
     users.update_one(
@@ -144,6 +186,8 @@ def add_point_by_qr():
 
     return jsonify({"message": "OK"}), 200
 
-# ---------- RUN ----------
+# =========================
+# RUN
+# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
