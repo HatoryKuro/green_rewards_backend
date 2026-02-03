@@ -1,13 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import users
+from bson.objectid import ObjectId   # ✅ BẮT BUỘC
 import hashlib
 import os
 
 app = Flask(__name__)
 CORS(app)
 
-# ---------- HASH ----------
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
@@ -27,20 +27,12 @@ if not admin:
 else:
     print("ℹ️ Admin already exists – not overwritten")
 
-# ---------- HOME ----------
-@app.route("/")
-def home():
-    return "Green Rewards Backend OK"
-
 # ---------- LOGIN ----------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
     identity = data.get("username")
     password = data.get("password")
-
-    if not identity or not password:
-        return jsonify({"error": "Thiếu dữ liệu"}), 400
 
     user = users.find_one({
         "$or": [
@@ -50,16 +42,13 @@ def login():
         ]
     })
 
-    if not user:
-        return jsonify({"error": "User not found"}), 401
-
-    if user["password"] != hash_password(password):
-        return jsonify({"error": "Wrong password"}), 401
+    if not user or user["password"] != hash_password(password):
+        return jsonify({"error": "Login failed"}), 401
 
     return jsonify({
-        "username": user.get("username"),
-        "email": user.get("email"),
-        "phone": user.get("phone"),
+        "username": user["username"],
+        "email": user["email"],
+        "phone": user["phone"],
         "role": user.get("role", "user"),
         "isAdmin": user.get("isAdmin", False),
         "point": user.get("point", 0)
@@ -70,51 +59,45 @@ def login():
 def register():
     data = request.json
 
-    username = data.get("username")
-    email = data.get("email")
-    phone = data.get("phone")
-    password = data.get("password")
-
-    if not username or not email or not phone or not password:
-        return jsonify({"error": "Thiếu dữ liệu"}), 400
-
-    if users.find_one({"username": username}):
-        return jsonify({"error": "Username đã tồn tại"}), 400
-
-    if users.find_one({"email": email}):
-        return jsonify({"error": "Email đã tồn tại"}), 400
-
-    if users.find_one({"phone": phone}):
-        return jsonify({"error": "SĐT đã tồn tại"}), 400
+    if users.find_one({"username": data["username"]}):
+        return jsonify({"error": "Username tồn tại"}), 400
 
     users.insert_one({
-        "username": username,
-        "email": email,
-        "phone": phone,
-        "password": hash_password(password),
+        "username": data["username"],
+        "email": data["email"],
+        "phone": data["phone"],
+        "password": hash_password(data["password"]),
         "role": "user",
         "isAdmin": False,
         "point": 0
     })
 
-    return jsonify({"message": "Tạo tài khoản thành công"}), 200
+    return jsonify({"message": "OK"}), 200
 
 # ---------- GET USERS ----------
 @app.route("/users", methods=["GET"])
 def get_users():
     return jsonify([
         {
-            "id": str(u["_id"]),
-            "username": u.get("username"),
-            "email": u.get("email"),
-            "phone": u.get("phone"),
+            "id": str(u["_id"]),   # ✅ DÙNG ID
+            "username": u["username"],
+            "email": u["email"],
+            "phone": u["phone"],
             "role": u.get("role", "user"),
             "isAdmin": u.get("isAdmin", False),
             "point": u.get("point", 0)
         } for u in users.find()
     ])
 
+# ---------- DELETE USER ----------
+@app.route("/users/<user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    result = users.delete_one({"_id": ObjectId(user_id)})
+
+    if result.deleted_count == 1:
+        return jsonify({"message": "Deleted"}), 200
+    return jsonify({"error": "Not found"}), 404
+
 # ---------- RUN ----------
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
