@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import users
 from bson.objectid import ObjectId
+from datetime import datetime
 import hashlib
 import os
 
@@ -91,7 +92,7 @@ def register():
     return jsonify({"message": "OK"}), 200
 
 # =========================
-# GET USERS  ✅ FIX POINT
+# GET USERS
 # =========================
 @app.route("/users", methods=["GET"])
 def get_users():
@@ -111,6 +112,25 @@ def get_users():
     return jsonify(result), 200
 
 # =========================
+# ✅ GET USER BY USERNAME (FIX HISTORY FLUTTER)
+# =========================
+@app.route("/users/<username>", methods=["GET"])
+def get_user_by_username(username):
+    user = users.find_one({"username": username})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({
+        "username": user.get("username"),
+        "email": user.get("email"),
+        "phone": user.get("phone"),
+        "role": user.get("role", "user"),
+        "isAdmin": user.get("isAdmin", False),
+        "point": safe_int(user.get("point", 0)),
+        "history": user.get("history", [])
+    }), 200
+
+# =========================
 # DELETE USER
 # =========================
 @app.route("/users/<user_id>", methods=["DELETE"])
@@ -123,7 +143,7 @@ def delete_user(user_id):
     return jsonify({"error": "Not found"}), 404
 
 # =========================
-# RESET POINT  ✅ BỔ SUNG (FLUTTER ĐANG GỌI)
+# RESET POINT
 # =========================
 @app.route("/users/<user_id>/reset-point", methods=["PUT"])
 def reset_point(user_id):
@@ -138,7 +158,7 @@ def reset_point(user_id):
     return jsonify({"message": "Point reset"}), 200
 
 # =========================
-# ADD POINT BY QR
+# ADD POINT BY QR  ✅ FIX HISTORY
 # =========================
 @app.route("/scan/add-point", methods=["POST"])
 def add_point_by_qr():
@@ -152,7 +172,7 @@ def add_point_by_qr():
     if not raw_username or not bill_code or point <= 0:
         return jsonify({"error": "Invalid data"}), 400
 
-    # ✅ CẮT USERQR|
+    # CẮT USERQR|
     if raw_username.startswith("USERQR|"):
         username = raw_username.split("|", 1)[1]
     else:
@@ -163,7 +183,6 @@ def add_point_by_qr():
         return jsonify({"error": "User not found"}), 404
 
     used_bills = user.get("usedBills", [])
-    history = user.get("history", [])
 
     if bill_code in used_bills:
         return jsonify({"error": "Bill already used"}), 400
@@ -176,9 +195,11 @@ def add_point_by_qr():
                 "usedBills": bill_code,
                 "history": {
                     "type": "add",
+                    "message": f"Cộng {point} điểm từ {partner}",
                     "partner": partner,
                     "bill": bill_code,
-                    "point": point
+                    "point": point,
+                    "time": datetime.now().strftime("%d/%m/%Y %H:%M")
                 }
             }
         }
