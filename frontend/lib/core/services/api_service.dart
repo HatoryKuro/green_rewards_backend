@@ -9,16 +9,20 @@ class ApiService {
     String username,
     String password,
   ) async {
-    final res = await http.post(
-      Uri.parse("$baseUrl/login"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"username": username, "password": password}),
-    );
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl/login"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"username": username, "password": password}),
+      );
 
-    if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
-    return null;
   }
 
   // ================== REGISTER ==================
@@ -28,55 +32,71 @@ class ApiService {
     required String phone,
     required String password,
   }) async {
-    final res = await http.post(
-      Uri.parse("$baseUrl/register"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "username": username,
-        "email": email,
-        "phone": phone,
-        "password": password,
-      }),
-    );
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl/register"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "email": email,
+          "phone": phone,
+          "password": password,
+        }),
+      );
 
-    if (res.statusCode == 200) return null;
+      if (res.statusCode == 200) return null;
 
-    final data = jsonDecode(res.body);
-    return data["error"] ?? "Register failed";
+      final data = jsonDecode(res.body);
+      return data["error"] ?? "Register failed";
+    } catch (e) {
+      return "Lỗi kết nối Server";
+    }
   }
 
-  // ================== GET USERS ==================
+  // ================== GET USERS (Dùng cho Management) ==================
   static Future<List<dynamic>> getUsers() async {
-    final res = await http.get(
-      Uri.parse("$baseUrl/users"),
-      headers: {"Content-Type": "application/json"},
-    );
+    try {
+      final res = await http.get(
+        Uri.parse("$baseUrl/users"),
+        headers: {"Content-Type": "application/json"},
+      );
 
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      if (data is List) return data;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is List) return data;
+      }
+      return [];
+    } catch (e) {
+      return [];
     }
-    return [];
   }
 
   // ================== DELETE USER ==================
   static Future<bool> deleteUser(String userId) async {
-    final res = await http.delete(
-      Uri.parse("$baseUrl/users/$userId"),
-      headers: {"Content-Type": "application/json"},
-    );
+    try {
+      final res = await http.delete(
+        Uri.parse("$baseUrl/users/$userId"),
+        headers: {"Content-Type": "application/json"},
+      );
 
-    return res.statusCode == 200 || res.statusCode == 204;
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (e) {
+      return false;
+    }
   }
 
   // ================== RESET POINT ==================
   static Future<bool> resetPoint(String userId) async {
-    final res = await http.put(
-      Uri.parse("$baseUrl/users/$userId/reset-point"),
-      headers: {"Content-Type": "application/json"},
-    );
+    try {
+      final res = await http.put(
+        Uri.parse("$baseUrl/users/$userId/reset-point"),
+        headers: {"Content-Type": "application/json"},
+      );
 
-    return res.statusCode == 200;
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
   }
 
   // ================== ADD POINT BY QR ==================
@@ -97,30 +117,37 @@ class ApiService {
       }),
     );
 
+    final data = jsonDecode(res.body);
+
     if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      return data;
     }
 
-    final data = jsonDecode(res.body);
-    throw data["error"] ?? "Add point failed";
+    // Nếu lỗi (ví dụ: bill already used), quăng lỗi ra để Flutter nhận diện
+    throw data["error"] ?? "Cộng điểm thất bại";
   }
 
-  // ================== GET USER BY USERNAME (DÙNG CHO HISTORY) ==================
+  // ================== GET USER BY USERNAME (Dùng cho History) ==================
   static Future<Map<String, dynamic>> getUserByUsername(String username) async {
+    // Lưu ý: Route này phải khớp với @app.route("/users/<username>") bên Backend
     final res = await http.get(
-      Uri.parse("$baseUrl/users/$username"),
-      headers: {"Content-Type": "application/json"},
+      Uri.parse('$baseUrl/users/$username'),
+      headers: {'Content-Type': 'application/json'},
     );
 
+    if (res.statusCode == 404) {
+      throw Exception('Không tìm thấy thông tin user này');
+    }
+
     if (res.statusCode != 200) {
-      throw Exception("Không tìm thấy user");
+      throw Exception('Lỗi hệ thống: ${res.statusCode}');
     }
 
     final data = jsonDecode(res.body);
 
-    // ✅ FIX DUY NHẤT – tránh crash history
-    if (data["history"] == null || data["history"] is! List) {
-      data["history"] = [];
+    // Đảm bảo history luôn có kiểu dữ liệu chuẩn List để không bị crash giao diện
+    if (data['history'] == null || data['history'] is! List) {
+      data['history'] = [];
     }
 
     return data;

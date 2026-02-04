@@ -341,10 +341,11 @@ class _UserHomeState extends State<UserHome> {
                           ),
                         ),
                         onPressed: () async {
+                          // 🔥 FIX LỖI: Truyền _username vào HistoryPoint và xóa 'const'
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const HistoryPoint(),
+                              builder: (_) => HistoryPoint(username: _username),
                             ),
                           );
                           _reloadPoint();
