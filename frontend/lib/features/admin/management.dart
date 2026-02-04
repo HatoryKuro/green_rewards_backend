@@ -68,6 +68,18 @@ class _ManagementState extends State<Management> {
   /// RESET POINT (GỌI API THẬT)
   /// =======================
   Future<void> confirmResetPoint(Map user) async {
+    // 🔥 THÊM LOGIC CHẶN: Nếu điểm đã là 0 thì không hiện Dialog reset
+    final int currentPoint = user["point"] ?? 0;
+    if (currentPoint <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Người dùng này không có điểm để reset'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -224,9 +236,10 @@ class _ManagementState extends State<Management> {
                           children: [
                             IconButton(
                               tooltip: 'Reset điểm',
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.refresh,
-                                color: Colors.orange,
+                                // Hiển thị màu mờ hơn nếu điểm bằng 0
+                                color: point > 0 ? Colors.orange : Colors.grey,
                               ),
                               onPressed: () => confirmResetPoint(u),
                             ),
