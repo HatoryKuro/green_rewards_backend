@@ -80,9 +80,6 @@ class ApiService {
   }
 
   // ================== ADD POINT BY QR ==================
-  /// 🔥 API CHUẨN:
-  /// - Backend phải $inc point
-  /// - Trả về point MỚI
   static Future<Map<String, dynamic>> addPointByQR({
     required String username,
     required String partner,
@@ -106,5 +103,26 @@ class ApiService {
 
     final data = jsonDecode(res.body);
     throw data["error"] ?? "Add point failed";
+  }
+
+  // ================== GET USER BY USERNAME (FIX CHO HISTORY) ==================
+  static Future<Map<String, dynamic>> getUserByUsername(String username) async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/users/$username'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception('Không tìm thấy user');
+    }
+
+    final data = jsonDecode(res.body);
+
+    // 🔥 FIX DUY NHẤT: đảm bảo history luôn là List
+    if (data['history'] == null || data['history'] is! List) {
+      data['history'] = [];
+    }
+
+    return data;
   }
 }
