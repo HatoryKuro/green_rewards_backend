@@ -12,7 +12,7 @@ class _HistoryPointState extends State<HistoryPoint> {
   late Future<Map<String, dynamic>> _futureUser;
 
   // 🔥 USERNAME HIỆN TẠI
-  // sau này bạn có thể thay bằng user login
+  // GIỮ NGUYÊN theo yêu cầu (không refactor)
   final String username = 'admin';
 
   @override
@@ -21,7 +21,7 @@ class _HistoryPointState extends State<HistoryPoint> {
     _futureUser = ApiService.getUserByUsername(username);
   }
 
-  Icon getIcon(String type) {
+  Icon getIcon(String? type) {
     switch (type) {
       case 'add':
         return const Icon(Icons.add_circle, color: Colors.green);
@@ -30,11 +30,11 @@ class _HistoryPointState extends State<HistoryPoint> {
       case 'reset':
         return const Icon(Icons.warning, color: Colors.red);
       default:
-        return const Icon(Icons.info);
+        return const Icon(Icons.info, color: Colors.blueGrey);
     }
   }
 
-  Color getColor(String type) {
+  Color getColor(String? type) {
     switch (type) {
       case 'add':
         return Colors.green.shade50;
@@ -75,8 +75,11 @@ class _HistoryPointState extends State<HistoryPoint> {
           }
 
           final user = snapshot.data!;
-          final List history = user['history'] ?? [];
+          final List historyRaw = user['history'] ?? [];
           final int point = (user['point'] ?? 0) as int;
+
+          // ✅ CHỐNG NULL + SORT MỚI → CŨ
+          final List history = historyRaw.reversed.toList();
 
           if (history.isEmpty) {
             return const Center(child: Text('Chưa có lịch sử'));
@@ -84,6 +87,7 @@ class _HistoryPointState extends State<HistoryPoint> {
 
           return Column(
             children: [
+              // ================= HEADER =================
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -105,24 +109,38 @@ class _HistoryPointState extends State<HistoryPoint> {
                   ],
                 ),
               ),
+
+              // ================= HISTORY LIST =================
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: history.length,
                   itemBuilder: (_, i) {
-                    final h = history.reversed.toList()[i];
-                    final int p = (h['point'] as num).toInt();
+                    final h = history[i];
+
+                    final int p = h['point'] is num
+                        ? (h['point'] as num).toInt()
+                        : 0;
 
                     return Card(
                       color: getColor(h['type']),
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 6),
                       child: ListTile(
                         leading: getIcon(h['type']),
-                        title: Text(h['message'] ?? ''),
-                        subtitle: Text(h['time'] ?? ''),
+                        title: Text(
+                          h['message'] ?? '',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          h['time'] ?? '',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         trailing: Text(
                           formatPoint(p),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
+                            fontSize: 16,
                             color: p >= 0 ? Colors.green : Colors.red,
                           ),
                         ),

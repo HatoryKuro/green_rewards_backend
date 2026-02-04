@@ -105,22 +105,22 @@ class ApiService {
     throw data["error"] ?? "Add point failed";
   }
 
-  // ================== GET USER BY USERNAME (FIX CHO HISTORY) ==================
+  // ================== GET USER BY USERNAME (DÙNG CHO HISTORY) ==================
   static Future<Map<String, dynamic>> getUserByUsername(String username) async {
     final res = await http.get(
-      Uri.parse('$baseUrl/users/$username'),
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse("$baseUrl/users/$username"),
+      headers: {"Content-Type": "application/json"},
     );
 
     if (res.statusCode != 200) {
-      throw Exception('Không tìm thấy user');
+      throw Exception("Không tìm thấy user");
     }
 
     final data = jsonDecode(res.body);
 
-    // 🔥 FIX DUY NHẤT: đảm bảo history luôn là List
-    if (data['history'] == null || data['history'] is! List) {
-      data['history'] = [];
+    // ✅ FIX DUY NHẤT – tránh crash history
+    if (data["history"] == null || data["history"] is! List) {
+      data["history"] = [];
     }
 
     return data;
