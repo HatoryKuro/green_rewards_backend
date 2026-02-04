@@ -143,19 +143,33 @@ def delete_user(user_id):
     return jsonify({"error": "Not found"}), 404
 
 # =========================
-# RESET POINT
+# RESET POINT (FIXED: Ghi thêm lịch sử lỗi hệ thống)
 # =========================
 @app.route("/users/<user_id>/reset-point", methods=["PUT"])
 def reset_point(user_id):
+    # Lấy thời gian hiện tại
+    now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    
+    # Thực hiện 2 việc: Đưa điểm về 0 và Push lịch sử mới vào mảng history
     result = users.update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"point": 0}}
+        {
+            "$set": {"point": 0},
+            "$push": {
+                "history": {
+                    "type": "reset",
+                    "message": "Hệ thống lỗi nên điểm quay về 0",
+                    "point": 0,
+                    "time": now_str
+                }
+            }
+        }
     )
 
     if result.matched_count == 0:
         return jsonify({"error": "User not found"}), 404
 
-    return jsonify({"message": "Point reset"}), 200
+    return jsonify({"message": "Point reset with history entry"}), 200
 
 # =========================
 # ADD POINT BY QR (Cập nhật Point và History)
