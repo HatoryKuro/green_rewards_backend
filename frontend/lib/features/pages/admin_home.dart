@@ -60,7 +60,7 @@ class AdminHome extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: 'Đăng xuất',
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            icon: const Icon(Icons.logout, color: Colors.green),
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,

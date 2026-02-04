@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/services/api_service.dart';
 
 class HistoryPoint extends StatefulWidget {
-  // Thêm biến để nhận username từ trang Management hoặc Profile truyền sang
   final String username;
 
   const HistoryPoint({super.key, required this.username});
@@ -17,7 +16,6 @@ class _HistoryPointState extends State<HistoryPoint> {
   @override
   void initState() {
     super.initState();
-    // Gọi API lấy dữ liệu dựa trên username được truyền vào
     _futureUser = ApiService.getUserByUsername(widget.username);
   }
 
@@ -28,7 +26,7 @@ class _HistoryPointState extends State<HistoryPoint> {
       case 'minus':
         return const Icon(Icons.remove_circle, color: Colors.orange);
       case 'reset':
-        return const Icon(Icons.warning, color: Colors.red);
+        return const Icon(Icons.report_problem, color: Colors.red);
       default:
         return const Icon(Icons.info, color: Colors.blueGrey);
     }
@@ -47,7 +45,8 @@ class _HistoryPointState extends State<HistoryPoint> {
     }
   }
 
-  String formatPoint(int point) {
+  String formatPoint(int point, String? type) {
+    if (type == 'reset') return 'Về 0';
     if (point > 0) return '+$point';
     return point.toString();
   }
@@ -85,13 +84,9 @@ class _HistoryPointState extends State<HistoryPoint> {
 
           final user = snapshot.data!;
           final List historyRaw = user['history'] ?? [];
-
-          // Xử lý ép kiểu point an toàn
           final int totalPoint = user['point'] is num
               ? (user['point'] as num).toInt()
               : 0;
-
-          // ✅ Đảo ngược danh sách: Mới nhất lên đầu
           final List history = historyRaw.reversed.toList();
 
           if (history.isEmpty) {
@@ -99,9 +94,8 @@ class _HistoryPointState extends State<HistoryPoint> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Đổi icon thành Icons.history
-                  Icon(Icons.history, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
+                  const Icon(Icons.history, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
                   const Text(
                     'Chưa có lịch sử tích điểm',
                     style: TextStyle(color: Colors.grey, fontSize: 16),
@@ -113,7 +107,6 @@ class _HistoryPointState extends State<HistoryPoint> {
 
           return Column(
             children: [
-              // ================= HEADER HIỂN THỊ TỔNG ĐIỂM =================
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -147,34 +140,40 @@ class _HistoryPointState extends State<HistoryPoint> {
                   ],
                 ),
               ),
-
-              // ================= DANH SÁCH LỊCH SỬ =================
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: history.length,
                   itemBuilder: (_, i) {
                     final h = history[i];
-
-                    // Ép kiểu point của từng dòng lịch sử
+                    final String type = h['type'] ?? '';
                     final int p = h['point'] is num
                         ? (h['point'] as num).toInt()
                         : 0;
 
+                    // 🔥 TỰ ĐỘNG ĐỔI THÔNG BÁO NẾU LÀ RESET
+                    String message = h['message'] ?? 'Giao dịch điểm';
+                    if (type == 'reset') {
+                      message = "Hệ thống lỗi nên điểm quay về 0";
+                    }
+
                     return Card(
-                      color: getColor(h['type']),
+                      color: getColor(type),
                       elevation: 1,
                       margin: const EdgeInsets.symmetric(vertical: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: ListTile(
-                        leading: getIcon(h['type']),
+                        leading: getIcon(type),
                         title: Text(
-                          h['message'] ?? 'Giao dịch điểm',
-                          style: const TextStyle(
+                          message,
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
+                            color: type == 'reset'
+                                ? Colors.red.shade900
+                                : Colors.black,
                           ),
                         ),
                         subtitle: Column(
@@ -195,11 +194,13 @@ class _HistoryPointState extends State<HistoryPoint> {
                           ],
                         ),
                         trailing: Text(
-                          formatPoint(p),
+                          formatPoint(p, type),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
-                            color: p >= 0 ? Colors.green.shade700 : Colors.red,
+                            color: type == 'reset'
+                                ? Colors.red
+                                : (p >= 0 ? Colors.green.shade700 : Colors.red),
                           ),
                         ),
                       ),

@@ -18,18 +18,20 @@ class _ThemeLoadPageState extends State<ThemeLoadPage>
   void initState() {
     super.initState();
 
-    // ⏱ hiệu ứng xoay
+    // ⏱ Hiệu ứng quay chậm và mượt hơn
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(milliseconds: 1500),
     )..repeat();
 
-    // ⏭ delay sang Login
+    // ⏭ Chuyển trang sau 5 giây
     Timer(const Duration(seconds: 5), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+        );
+      }
     });
   }
 
@@ -47,94 +49,72 @@ class _ThemeLoadPageState extends State<ThemeLoadPage>
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF43A047), Color(0xFF66BB6A), Color(0xFFA5D6A7)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1B5E20), Color(0xFF43A047), Color(0xFF81C784)],
           ),
         ),
         child: Stack(
           children: [
-            // 🌿 Background icon cây cỏ
+            // 🌿 Họa tiết trang trí chìm
             Positioned(
-              top: 80,
-              left: 30,
-              child: Icon(Icons.eco, size: 60, color: Colors.white24),
-            ),
-            Positioned(
-              bottom: 120,
-              right: 40,
-              child: Icon(Icons.grass, size: 70, color: Colors.white24),
-            ),
-            Positioned(
-              bottom: 40,
-              left: 50,
-              child: Icon(Icons.local_florist, size: 50, color: Colors.white24),
+              top: -50,
+              right: -50,
+              child: Icon(
+                Icons.eco,
+                size: 200,
+                color: Colors.white.withOpacity(0.1),
+              ),
             ),
 
-            // 🌱 LOADING CENTER
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // LOGO
+                  // LOGO TRƯỜNG
                   Image.asset(
                     'assets/images/logo_truong.png',
-                    width: 150,
-                    height: 150,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 30),
-
-                  // 🌿 VÒNG XOAY LÁ
-                  SizedBox(
                     width: 120,
                     height: 120,
-                    child: AnimatedBuilder(
-                      animation: _controller,
-                      builder: (_, child) {
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // vòng tròn mờ
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.4),
-                                  width: 3,
-                                ),
-                              ),
-                            ),
-
-                            // icon lá xoay quanh vòng
-                            Transform.rotate(
-                              angle: _controller.value * 2 * pi,
-                              child: Transform.translate(
-                                offset: const Offset(0, -50),
-                                child: const Icon(
-                                  Icons.eco,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                    fit: BoxFit.contain,
                   ),
+                  const SizedBox(height: 60),
 
-                  const SizedBox(height: 16),
+                  // 🌱 HIỆU ỨNG LOADING CHUYÊN NGHIỆP
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Vòng cung vẽ bằng CustomPainter
+                      RotationTransition(
+                        turns: _controller,
+                        child: SizedBox(
+                          width: 150,
+                          height: 150,
+                          child: CustomPaint(painter: LeafLoaderPainter()),
+                        ),
+                      ),
+                      // Chữ Loading nằm ở giữa tâm vòng xoay
+                      const Text(
+                        'Loading...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
 
-                  const Text(
-                    'Loading...',
+                  // Slogan hoặc tên ứng dụng phía dưới
+                  Text(
+                    'GREEN REWARDS',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4,
                     ),
                   ),
                 ],
@@ -145,4 +125,58 @@ class _ThemeLoadPageState extends State<ThemeLoadPage>
       ),
     );
   }
+}
+
+// 🎨 Lớp vẽ vòng cung và chiếc lá dẫn đầu
+class LeafLoaderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double strokeWidth = 6.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    // 1. Vẽ vòng tròn nền mờ
+    final backgroundPaint = Paint()
+      ..color = Colors.white.withOpacity(0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    // 2. Vẽ vòng cung Loading (Gradient)
+    final arcPaint = Paint()
+      ..shader = SweepGradient(
+        colors: [Colors.transparent, Colors.white],
+        stops: [0.0, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -pi / 2, // Bắt đầu từ đỉnh
+      1.5 * pi, // Độ dài vòng cung
+      false,
+      arcPaint,
+    );
+
+    // 3. Vẽ chiếc lá ở điểm đầu của vòng cung
+    final leafPainter = TextPainter(
+      text: TextSpan(text: ' ', style: TextStyle(fontSize: 24)),
+      textDirection: TextDirection.ltr,
+    );
+    leafPainter.layout();
+
+    // Tính toán vị trí để "con mèo" (chiếc lá) luôn nằm ở đầu vòng xoay
+    final angle = -pi / 2 + (1.5 * pi); // Vị trí kết thúc của vòng cung
+    final leafOffset = Offset(
+      center.dx + radius * cos(angle) - (leafPainter.width / 2),
+      center.dy + radius * sin(angle) - (leafPainter.height / 2),
+    );
+
+    leafPainter.paint(canvas, leafOffset);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
