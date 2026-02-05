@@ -359,7 +359,7 @@ class ApiService {
     required String priceRange,
     required String segment,
     required String description,
-    String imageUrl = '',
+    String? imageId,
   }) async {
     try {
       final res = await http.post(
@@ -371,7 +371,7 @@ class ApiService {
           "price_range": priceRange,
           "segment": segment,
           "description": description,
-          "image_url": imageUrl,
+          "image_id": imageId,
         }),
       );
 
@@ -394,7 +394,7 @@ class ApiService {
     required String priceRange,
     required String segment,
     required String description,
-    String imageUrl = '',
+    String? imageId,
   }) async {
     try {
       final res = await http.put(
@@ -406,7 +406,7 @@ class ApiService {
           "price_range": priceRange,
           "segment": segment,
           "description": description,
-          "image_url": imageUrl,
+          "image_id": imageId,
         }),
       );
 
@@ -446,6 +446,66 @@ class ApiService {
       }
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
+    }
+  }
+
+  // ================== IMAGE API (GridFS) ==================
+
+  // 1. Upload ảnh cho partner
+  static Future<Map<String, dynamic>> uploadPartnerImage({
+    required String partnerId,
+    required String imagePath, // Path to local image file
+  }) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/admin/upload-partner-image'),
+      );
+
+      // Add partner_id
+      request.fields['partner_id'] = partnerId;
+
+      // Add image file
+      var file = await http.MultipartFile.fromPath(
+        'image',
+        imagePath,
+        filename: 'partner_$partnerId.jpg',
+      );
+      request.files.add(file);
+
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+      var data = jsonDecode(responseData);
+
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        throw Exception(data['error'] ?? "Upload ảnh thất bại");
+      }
+    } catch (e) {
+      throw Exception("Lỗi upload: ${e.toString()}");
+    }
+  }
+
+  // 2. Lấy ảnh URL từ image_id
+  static String getImageUrl(String? imageId) {
+    if (imageId == null || imageId.isEmpty || imageId == 'null') {
+      return ''; // No image
+    }
+    return '$baseUrl/image/$imageId';
+  }
+
+  // 3. Xóa ảnh
+  static Future<bool> deleteImage(String imageId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/admin/image/$imageId'),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 }

@@ -506,13 +506,6 @@ class _ManagementState extends State<Management> {
         backgroundColor: Colors.green,
         title: const Text('Quản lý người dùng'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: reload,
-            tooltip: 'Tải lại danh sách',
-          ),
-        ],
       ),
       body: isLoading
           ? _buildLoading()

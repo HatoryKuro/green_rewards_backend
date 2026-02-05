@@ -1,10 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from database import users, vouchers, user_vouchers, partners
+from database import users, vouchers, user_vouchers, partners, fs
 from bson.objectid import ObjectId
 from datetime import datetime
 import hashlib
 import os
+from werkzeug.utils import secure_filename
+from io import BytesIO
 
 app = Flask(__name__)
 CORS(app)
@@ -38,7 +40,7 @@ def ensure_default_partners():
             "segment": "Sinh viên – giới trẻ",
             "description": "Phong cách trẻ trung, vị trà đậm, topping đa dạng",
             "status": "active",
-            "image_url": ""
+            "image_id": None  # Thay image_url bằng image_id
         },
         {
             "name": "TuTiMi",
@@ -47,7 +49,7 @@ def ensure_default_partners():
             "segment": "Học sinh – sinh viên",
             "description": "Vị ngọt vừa, menu dễ uống, giá mềm",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Sunday Basic",
@@ -56,7 +58,7 @@ def ensure_default_partners():
             "segment": "Dân văn phòng",
             "description": "Thiết kế tối giản, đồ uống hiện đại",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Sóng Sánh",
@@ -65,7 +67,7 @@ def ensure_default_partners():
             "segment": "Giới trẻ",
             "description": "Trân châu ngon, vị béo rõ",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Te Amo",
@@ -74,7 +76,7 @@ def ensure_default_partners():
             "segment": "Cặp đôi – giới trẻ",
             "description": "Phong cách lãng mạn, menu sáng tạo",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Trà Sữa Boss",
@@ -83,7 +85,7 @@ def ensure_default_partners():
             "segment": "Sinh viên",
             "description": "Giá rẻ, topping nhiều",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Hồng Trà Ngô Gia",
@@ -92,7 +94,7 @@ def ensure_default_partners():
             "segment": "Khách thích trà nguyên vị",
             "description": "Trà đậm vị, ít ngọt, cao cấp",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Lục Trà Thăng Hoa",
@@ -101,7 +103,7 @@ def ensure_default_partners():
             "segment": "Người thích healthy",
             "description": "Trà thanh, trái cây tươi",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "Viên Viên",
@@ -110,7 +112,7 @@ def ensure_default_partners():
             "segment": "Giới trẻ",
             "description": "Vị béo, topping handmade",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         },
         {
             "name": "TocoToco",
@@ -119,7 +121,7 @@ def ensure_default_partners():
             "segment": "Đại chúng",
             "description": "Chuỗi lớn, chất lượng ổn định",
             "status": "active",
-            "image_url": ""
+            "image_id": None
         }
     ]
     
@@ -554,9 +556,104 @@ def get_voucher_stats():
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 # =========================
-# PARTNER ROUTES (giữ nguyên)
+# IMAGE UPLOAD & RETRIEVAL (GridFS)
 # =========================
 
+# 1. Upload ảnh cho partner
+@app.route("/admin/upload-partner-image", methods=["POST"])
+def upload_partner_image():
+    try:
+        partner_id = request.form.get("partner_id")
+        if not partner_id:
+            return jsonify({"error": "Thiếu partner_id"}), 400
+        
+        # Kiểm tra partner tồn tại
+        partner = partners.find_one({"_id": ObjectId(partner_id)})
+        if not partner:
+            return jsonify({"error": "Partner không tồn tại"}), 404
+        
+        # Kiểm tra file ảnh
+        if 'image' not in request.files:
+            return jsonify({"error": "Không có file ảnh"}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({"error": "Không có file được chọn"}), 400
+        
+        # Kiểm tra định dạng file
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        if not '.' in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+            return jsonify({"error": "Định dạng file không hỗ trợ"}), 400
+        
+        # Lưu ảnh vào GridFS
+        filename = secure_filename(f"partner_{partner_id}_{file.filename}")
+        image_id = fs.put(
+            file.read(),
+            filename=filename,
+            content_type=file.content_type,
+            partner_id=partner_id,
+            partner_name=partner['name']
+        )
+        
+        # Cập nhật partner với image_id
+        partners.update_one(
+            {"_id": ObjectId(partner_id)},
+            {"$set": {"image_id": str(image_id)}}
+        )
+        
+        return jsonify({
+            "message": "Upload ảnh thành công",
+            "image_id": str(image_id),
+            "partner_name": partner['name']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Lỗi upload: {str(e)}"}), 500
+
+# 2. Lấy ảnh từ GridFS
+@app.route("/image/<image_id>", methods=["GET"])
+def get_image(image_id):
+    try:
+        # Tìm file trong GridFS
+        grid_out = fs.get(ObjectId(image_id))
+        
+        # Trả về ảnh
+        response = send_file(
+            BytesIO(grid_out.read()),
+            mimetype=grid_out.content_type,
+            as_attachment=False,
+            download_name=grid_out.filename
+        )
+        response.headers['Content-Disposition'] = f'inline; filename="{grid_out.filename}"'
+        return response
+        
+    except gridfs.errors.NoFile:
+        return jsonify({"error": "Không tìm thấy ảnh"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+# 3. Xóa ảnh
+@app.route("/admin/image/<image_id>", methods=["DELETE"])
+def delete_image(image_id):
+    try:
+        # Xóa từ GridFS
+        fs.delete(ObjectId(image_id))
+        
+        # Cập nhật partner (xóa image_id)
+        partners.update_one(
+            {"image_id": image_id},
+            {"$unset": {"image_id": ""}}
+        )
+        
+        return jsonify({"message": "Xóa ảnh thành công"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+# =========================
+# PARTNER ROUTES (cập nhật có image_id)
+# =========================
+
+# 1. Lấy danh sách tất cả partners
 @app.route("/partners", methods=["GET"])
 def get_partners():
     try:
@@ -571,7 +668,7 @@ def get_partners():
                 "price_range": p.get("price_range", ""),
                 "segment": p.get("segment", ""),
                 "description": p.get("description", ""),
-                "image_url": p.get("image_url", ""),
+                "image_id": p.get("image_id", ""),  # Trả về image_id thay vì image_url
                 "status": p.get("status", "active"),
                 "created_at": p.get("created_at", "").isoformat() if "created_at" in p else ""
             })
@@ -580,6 +677,7 @@ def get_partners():
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
+# 2. Lấy partner theo ID
 @app.route("/partners/<partner_id>", methods=["GET"])
 def get_partner(partner_id):
     try:
@@ -594,19 +692,22 @@ def get_partner(partner_id):
             "price_range": partner.get("price_range", ""),
             "segment": partner.get("segment", ""),
             "description": partner.get("description", ""),
-            "image_url": partner.get("image_url", ""),
+            "image_id": partner.get("image_id", ""),  # Trả về image_id
             "status": partner.get("status", "active")
         }), 200
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
+# 3. Tạo partner mới (Admin only)
 @app.route("/admin/partners", methods=["POST"])
 def create_partner():
     data = request.json
     
+    # Kiểm tra required fields
     if not data.get("name"):
         return jsonify({"error": "Partner name is required"}), 400
     
+    # Kiểm tra trùng tên
     existing = partners.find_one({"name": data["name"]})
     if existing:
         return jsonify({"error": "Partner name already exists"}), 400
@@ -617,7 +718,7 @@ def create_partner():
         "price_range": data.get("price_range", ""),
         "segment": data.get("segment", ""),
         "description": data.get("description", ""),
-        "image_url": data.get("image_url", ""),
+        "image_id": data.get("image_id", None),  # Thêm image_id
         "status": data.get("status", "active"),
         "created_at": datetime.now()
     }
@@ -631,6 +732,7 @@ def create_partner():
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
+# 4. Cập nhật partner (Admin only)
 @app.route("/admin/partners/<partner_id>", methods=["PUT"])
 def update_partner(partner_id):
     data = request.json
@@ -640,13 +742,14 @@ def update_partner(partner_id):
         if not partner:
             return jsonify({"error": "Partner not found"}), 404
         
+        # Kiểm tra nếu đổi tên thì không được trùng với partner khác
         if "name" in data and data["name"] != partner["name"]:
             existing = partners.find_one({"name": data["name"], "_id": {"$ne": ObjectId(partner_id)}})
             if existing:
                 return jsonify({"error": "Partner name already exists"}), 400
         
         update_data = {}
-        fields = ["name", "type", "price_range", "segment", "description", "image_url", "status"]
+        fields = ["name", "type", "price_range", "segment", "description", "image_id", "status"]
         for field in fields:
             if field in data:
                 update_data[field] = data[field]
@@ -664,13 +767,23 @@ def update_partner(partner_id):
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
+# 5. Xóa partner (Admin only - soft delete)
 @app.route("/admin/partners/<partner_id>", methods=["DELETE"])
 def delete_partner(partner_id):
     try:
+        # Kiểm tra partner có tồn tại không
         partner = partners.find_one({"_id": ObjectId(partner_id)})
         if not partner:
             return jsonify({"error": "Partner not found"}), 404
         
+        # Xóa ảnh nếu có
+        if partner.get("image_id"):
+            try:
+                fs.delete(ObjectId(partner["image_id"]))
+            except:
+                pass
+        
+        # Soft delete: đổi status thành inactive
         result = partners.update_one(
             {"_id": ObjectId(partner_id)},
             {"$set": {"status": "inactive"}}
@@ -684,6 +797,7 @@ def delete_partner(partner_id):
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
+# 6. Lấy danh sách partner names đơn giản (cho dropdown)
 @app.route("/partners/names", methods=["GET"])
 def get_partner_names():
     try:

@@ -3,3 +3,4 @@ flask-cors
 pymongo
 dnspython
 gunicorn
+gridfs==0.6.0

@@ -1,3 +1,5 @@
+import '../../core/services/api_service.dart';
+
 // lib/core/models/partner.dart
 class Partner {
   final String id;
@@ -6,8 +8,9 @@ class Partner {
   final String priceRange;
   final String segment;
   final String description;
-  final String imageUrl;
+  final String? imageId; // Thay đổi từ imageUrl sang imageId
   final String status;
+  final String? imageUrl; // Giữ lại cho tương thích (tự động tạo từ imageId)
 
   Partner({
     required this.id,
@@ -16,8 +19,9 @@ class Partner {
     required this.priceRange,
     required this.segment,
     required this.description,
-    required this.imageUrl,
+    this.imageId,
     required this.status,
+    this.imageUrl,
   });
 
   factory Partner.fromJson(Map<String, dynamic> json) {
@@ -28,8 +32,9 @@ class Partner {
       priceRange: json['price_range'] ?? json['priceRange'] ?? '',
       segment: json['segment'] ?? '',
       description: json['description'] ?? '',
-      imageUrl: json['image_url'] ?? json['imageUrl'] ?? '',
+      imageId: json['image_id'] ?? json['imageId'], // Lấy image_id từ backend
       status: json['status'] ?? 'active',
+      imageUrl: json['image_url'] ?? json['imageUrl'],
     );
   }
 
@@ -40,8 +45,17 @@ class Partner {
       'price_range': priceRange,
       'segment': segment,
       'description': description,
-      'image_url': imageUrl,
+      'image_id': imageId, // Gửi image_id thay vì image_url
       'status': status,
     };
+  }
+
+  // Helper để lấy URL ảnh
+  String? get imageUrlFromId {
+    if (imageId != null && imageId!.isNotEmpty) {
+      // Tạo URL từ imageId (sẽ được xử lý bởi ApiService)
+      return ApiService.getImageUrl(imageId!);
+    }
+    return null;
   }
 }

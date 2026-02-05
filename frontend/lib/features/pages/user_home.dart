@@ -88,7 +88,7 @@ class _UserHomeState extends State<UserHome> {
                       'assets/icon/app_icon2.png',
                       width: 45,
                       height: 45,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.scaleDown,
                     ),
                   ),
                 ),
@@ -255,7 +255,7 @@ class _UserHomeState extends State<UserHome> {
                             image: AssetImage(
                               'assets/images/partners/${i + 1}.png',
                             ),
-                            fit: BoxFit.cover,
+                            fit: BoxFit.scaleDown,
                           ),
                         ),
                       );

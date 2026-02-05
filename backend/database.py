@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+import gridfs
 import os
 
 MONGO_URI = "mongodb+srv://locnguyen2512cn_db_user:GreenRewards123@greenrewards.lqkojxf.mongodb.net/green_rewards?retryWrites=true&w=majority"
@@ -13,6 +14,9 @@ users = db['users']
 vouchers = db['vouchers']
 user_vouchers = db['user_vouchers']
 partners = db['partners']  # Thêm mới
+
+# GridFS cho lưu trữ ảnh
+fs = gridfs.GridFS(db, collection='images')
 
 # Tạo index để tối ưu truy vấn
 partners.create_index([("name", 1)], unique=True)

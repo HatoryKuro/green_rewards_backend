@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/api_service.dart';
+import '../../features/other/partner.dart'; // Import model Partner
 
 class PartnerList extends StatefulWidget {
   const PartnerList({super.key});
@@ -12,8 +13,9 @@ class PartnerList extends StatefulWidget {
 
 class _PartnerListState extends State<PartnerList> {
   int expandedIndex = -1;
-  List<Map<String, dynamic>> partners = [];
+  List<Partner> partners = []; // Sử dụng model Partner thay vì Map
   bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -22,25 +24,23 @@ class _PartnerListState extends State<PartnerList> {
   }
 
   Future<void> _loadPartners() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
     try {
       final response = await ApiService.getPartners();
       setState(() {
-        partners = List<Map<String, dynamic>>.from(response);
+        // Convert từ List<dynamic> sang List<Partner>
+        partners = response
+            .map<Partner>((json) => Partner.fromJson(json))
+            .toList();
         isLoading = false;
       });
     } catch (e) {
-      // Fallback: dùng danh sách hardcode nếu API fail
       setState(() {
-        partners = [
-          {
-            'name': 'May Cha',
-            'type': 'Trà sữa',
-            'price_range': '25.000đ – 45.000đ',
-            'segment': 'Sinh viên – giới trẻ',
-            'description': 'Phong cách trẻ trung, vị trà đậm, topping đa dạng',
-          },
-          // ... các partner khác
-        ];
+        errorMessage = 'Không thể tải danh sách đối tác. Vui lòng thử lại.';
         isLoading = false;
       });
     }
@@ -55,82 +55,10 @@ class _PartnerListState extends State<PartnerList> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Danh sách đối tác'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadPartners),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: partners.length,
-              itemBuilder: (_, i) {
-                final p = partners[i];
-                final isExpanded = expandedIndex == i;
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: _buildPartnerImage(p, i),
-                        title: Text(
-                          p['name'] ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(p['type'] ?? ''),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.map, color: Colors.green),
-                              onPressed: () => openMap(p['name']),
-                            ),
-                            Icon(
-                              isExpanded
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                            ),
-                          ],
-                        ),
-                        onTap: () {
-                          setState(() {
-                            expandedIndex = isExpanded ? -1 : i;
-                          });
-                        },
-                      ),
-                      if (isExpanded)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('• Đồ uống: ${p['type']}'),
-                              Text('• Phân khúc: ${p['segment']}'),
-                              Text('• Giá: ${p['price_range']}'),
-                              Text('• Đặc điểm: ${p['description']}'),
-                              const Text('• Áp dụng tích điểm GreenPoints'),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-    );
-  }
-
-  Widget _buildPartnerImage(Map<String, dynamic> p, int index) {
-    final imageUrl = p['image_url'];
+  // Widget hiển thị ảnh partner
+  Widget _buildPartnerImage(Partner partner, int index) {
+    // Ưu tiên dùng imageId để lấy ảnh từ GridFS
+    final imageUrl = partner.imageUrlFromId ?? partner.imageUrl;
 
     if (imageUrl != null && imageUrl.isNotEmpty) {
       return ClipRRect(
@@ -140,6 +68,22 @@ class _PartnerListState extends State<PartnerList> {
           width: 48,
           height: 48,
           fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: 48,
+              height: 48,
+              color: Colors.grey[200],
+              child: Center(
+                child: CircularProgressIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                      : null,
+                ),
+              ),
+            );
+          },
           errorBuilder: (context, error, stackTrace) {
             return _buildDefaultImage(index);
           },
@@ -151,13 +95,195 @@ class _PartnerListState extends State<PartnerList> {
   }
 
   Widget _buildDefaultImage(int index) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: 48,
-        height: 48,
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
         color: Colors.grey[200],
-        child: Icon(Icons.store, color: Colors.grey[600]),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(Icons.store, color: Colors.grey[600]),
+    );
+  }
+
+  // Widget khi có lỗi
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, color: Colors.red, size: 64),
+          SizedBox(height: 16),
+          Text(
+            errorMessage ?? 'Đã xảy ra lỗi',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          SizedBox(height: 16),
+          ElevatedButton(onPressed: _loadPartners, child: Text('Thử lại')),
+        ],
+      ),
+    );
+  }
+
+  // Widget khi không có partner
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.store_mall_directory, size: 64, color: Colors.grey[400]),
+          SizedBox(height: 16),
+          Text(
+            'Không có đối tác nào',
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Hãy thêm đối tác mới',
+            style: TextStyle(color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Danh sách đối tác'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadPartners,
+            tooltip: 'Tải lại',
+          ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    if (partners.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: partners.length,
+      itemBuilder: (_, index) {
+        final partner = partners[index];
+        final isExpanded = expandedIndex == index;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              ListTile(
+                leading: _buildPartnerImage(partner, index),
+                title: Text(
+                  partner.name,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                subtitle: Text(partner.type),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.map, color: Colors.green),
+                      onPressed: () => openMap(partner.name),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(
+                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                      color: Colors.grey[600],
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  setState(() {
+                    expandedIndex = isExpanded ? -1 : index;
+                  });
+                },
+              ),
+              if (isExpanded)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDetailRow('Đồ uống:', partner.type),
+                      _buildDetailRow('Phân khúc:', partner.segment),
+                      _buildDetailRow('Giá:', partner.priceRange),
+                      _buildDetailRow('Mô tả:', partner.description),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.verified, color: Colors.green, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'Áp dụng tích điểm GreenPoints',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label ',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+              fontSize: 14,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+          ),
+        ],
       ),
     );
   }
