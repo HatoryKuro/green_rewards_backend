@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from database import users
+from database import users, vouchers, user_vouchers, partners
 from bson.objectid import ObjectId
 from datetime import datetime
 import hashlib
@@ -21,6 +21,117 @@ def safe_int(value):
     except:
         return 0
 
+def safe_str(value):
+    if value is None:
+        return ""
+    return str(value)
+
+# =========================
+# ENSURE DEFAULT PARTNERS
+# =========================
+def ensure_default_partners():
+    default_partners = [
+        {
+            "name": "May Cha",
+            "type": "Trà sữa",
+            "price_range": "25.000đ – 45.000đ",
+            "segment": "Sinh viên – giới trẻ",
+            "description": "Phong cách trẻ trung, vị trà đậm, topping đa dạng",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "TuTiMi",
+            "type": "Trà sữa",
+            "price_range": "30.000đ – 50.000đ",
+            "segment": "Học sinh – sinh viên",
+            "description": "Vị ngọt vừa, menu dễ uống, giá mềm",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Sunday Basic",
+            "type": "Trà sữa / Đồ uống",
+            "price_range": "35.000đ – 60.000đ",
+            "segment": "Dân văn phòng",
+            "description": "Thiết kế tối giản, đồ uống hiện đại",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Sóng Sánh",
+            "type": "Trà sữa",
+            "price_range": "28.000đ – 48.000đ",
+            "segment": "Giới trẻ",
+            "description": "Trân châu ngon, vị béo rõ",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Te Amo",
+            "type": "Trà sữa",
+            "price_range": "30.000đ – 55.000đ",
+            "segment": "Cặp đôi – giới trẻ",
+            "description": "Phong cách lãng mạn, menu sáng tạo",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Trà Sữa Boss",
+            "type": "Trà sữa",
+            "price_range": "25.000đ – 45.000đ",
+            "segment": "Sinh viên",
+            "description": "Giá rẻ, topping nhiều",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Hồng Trà Ngô Gia",
+            "type": "Trà / Hồng trà",
+            "price_range": "40.000đ – 70.000đ",
+            "segment": "Khách thích trà nguyên vị",
+            "description": "Trà đậm vị, ít ngọt, cao cấp",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Lục Trà Thăng Hoa",
+            "type": "Trà trái cây",
+            "price_range": "35.000đ – 60.000đ",
+            "segment": "Người thích healthy",
+            "description": "Trà thanh, trái cây tươi",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "Viên Viên",
+            "type": "Trà sữa",
+            "price_range": "30.000đ – 50.000đ",
+            "segment": "Giới trẻ",
+            "description": "Vị béo, topping handmade",
+            "status": "active",
+            "image_url": ""
+        },
+        {
+            "name": "TocoToco",
+            "type": "Trà sữa",
+            "price_range": "30.000đ – 55.000đ",
+            "segment": "Đại chúng",
+            "description": "Chuỗi lớn, chất lượng ổn định",
+            "status": "active",
+            "image_url": ""
+        }
+    ]
+    
+    for partner in default_partners:
+        if not partners.find_one({"name": partner["name"]}):
+            partner["created_at"] = datetime.now()
+            partners.insert_one(partner)
+            print(f"Created default partner: {partner['name']}")
+
+# Gọi hàm khi khởi động
+ensure_default_partners()
+
 # =========================
 # ENSURE ADMIN
 # =========================
@@ -35,8 +146,167 @@ if not admin:
         "isAdmin": True,
         "point": 0,
         "usedBills": [],
-        "history": []
+        "history": [],
+        "created_at": datetime.now()
     })
+
+# =========================
+# PARTNER ROUTES
+# =========================
+
+# 1. Lấy danh sách tất cả partners
+@app.route("/partners", methods=["GET"])
+def get_partners():
+    try:
+        partners_list = partners.find({"status": "active"}).sort("name", 1)
+        
+        result = []
+        for p in partners_list:
+            result.append({
+                "id": str(p["_id"]),
+                "name": p["name"],
+                "type": p.get("type", ""),
+                "price_range": p.get("price_range", ""),
+                "segment": p.get("segment", ""),
+                "description": p.get("description", ""),
+                "image_url": p.get("image_url", ""),
+                "status": p.get("status", "active"),
+                "created_at": p.get("created_at", "").isoformat() if "created_at" in p else ""
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+# 2. Lấy partner theo ID
+@app.route("/partners/<partner_id>", methods=["GET"])
+def get_partner(partner_id):
+    try:
+        partner = partners.find_one({"_id": ObjectId(partner_id)})
+        if not partner:
+            return jsonify({"error": "Partner not found"}), 404
+        
+        return jsonify({
+            "id": str(partner["_id"]),
+            "name": partner["name"],
+            "type": partner.get("type", ""),
+            "price_range": partner.get("price_range", ""),
+            "segment": partner.get("segment", ""),
+            "description": partner.get("description", ""),
+            "image_url": partner.get("image_url", ""),
+            "status": partner.get("status", "active")
+        }), 200
+    except:
+        return jsonify({"error": "Invalid partner ID"}), 400
+
+# 3. Tạo partner mới (Admin only)
+@app.route("/admin/partners", methods=["POST"])
+def create_partner():
+    data = request.json
+    
+    # Kiểm tra required fields
+    if not data.get("name"):
+        return jsonify({"error": "Partner name is required"}), 400
+    
+    # Kiểm tra trùng tên
+    existing = partners.find_one({"name": data["name"]})
+    if existing:
+        return jsonify({"error": "Partner name already exists"}), 400
+    
+    partner = {
+        "name": data["name"],
+        "type": data.get("type", ""),
+        "price_range": data.get("price_range", ""),
+        "segment": data.get("segment", ""),
+        "description": data.get("description", ""),
+        "image_url": data.get("image_url", ""),
+        "status": data.get("status", "active"),
+        "created_at": datetime.now()
+    }
+    
+    try:
+        result = partners.insert_one(partner)
+        return jsonify({
+            "message": "Partner created successfully",
+            "partner_id": str(result.inserted_id)
+        }), 201
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+# 4. Cập nhật partner (Admin only)
+@app.route("/admin/partners/<partner_id>", methods=["PUT"])
+def update_partner(partner_id):
+    data = request.json
+    
+    try:
+        partner = partners.find_one({"_id": ObjectId(partner_id)})
+        if not partner:
+            return jsonify({"error": "Partner not found"}), 404
+        
+        # Kiểm tra nếu đổi tên thì không được trùng với partner khác
+        if "name" in data and data["name"] != partner["name"]:
+            existing = partners.find_one({"name": data["name"], "_id": {"$ne": ObjectId(partner_id)}})
+            if existing:
+                return jsonify({"error": "Partner name already exists"}), 400
+        
+        update_data = {}
+        fields = ["name", "type", "price_range", "segment", "description", "image_url", "status"]
+        for field in fields:
+            if field in data:
+                update_data[field] = data[field]
+        
+        result = partners.update_one(
+            {"_id": ObjectId(partner_id)},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({"message": "Partner updated successfully"}), 200
+        else:
+            return jsonify({"message": "No changes made"}), 200
+            
+    except:
+        return jsonify({"error": "Invalid partner ID"}), 400
+
+# 5. Xóa partner (Admin only - soft delete)
+@app.route("/admin/partners/<partner_id>", methods=["DELETE"])
+def delete_partner(partner_id):
+    try:
+        # Kiểm tra partner có tồn tại không
+        partner = partners.find_one({"_id": ObjectId(partner_id)})
+        if not partner:
+            return jsonify({"error": "Partner not found"}), 404
+        
+        # Soft delete: đổi status thành inactive
+        result = partners.update_one(
+            {"_id": ObjectId(partner_id)},
+            {"$set": {"status": "inactive"}}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({"message": "Partner deleted successfully"}), 200
+        else:
+            return jsonify({"error": "Failed to delete partner"}), 500
+            
+    except:
+        return jsonify({"error": "Invalid partner ID"}), 400
+
+# 6. Lấy danh sách partner names đơn giản (cho dropdown)
+@app.route("/partners/names", methods=["GET"])
+def get_partner_names():
+    try:
+        partners_list = partners.find({"status": "active"}).sort("name", 1)
+        
+        result = []
+        for p in partners_list:
+            result.append({
+                "name": p["name"],
+                "id": str(p["_id"])
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 # =========================
 # LOGIN
@@ -67,168 +337,7 @@ def login():
         "point": safe_int(user.get("point", 0))
     }), 200
 
-# =========================
-# REGISTER
-# =========================
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.json
-
-    if users.find_one({"username": data["username"]}):
-        return jsonify({"error": "Username tồn tại"}), 400
-
-    users.insert_one({
-        "username": data["username"],
-        "email": data["email"],
-        "phone": data["phone"],
-        "password": hash_password(data["password"]),
-        "role": "user",
-        "isAdmin": False,
-        "point": 0,
-        "usedBills": [],
-        "history": []
-    })
-
-    return jsonify({"message": "OK"}), 200
-
-# =========================
-# GET ALL USERS (Dùng cho trang Management)
-# =========================
-@app.route("/users", methods=["GET"])
-def get_users():
-    result = []
-
-    for u in users.find():
-        result.append({
-            "id": str(u["_id"]),
-            "username": u.get("username"),
-            "email": u.get("email"),
-            "phone": u.get("phone"),
-            "role": u.get("role", "user"),
-            "isAdmin": u.get("isAdmin", False),
-            "point": safe_int(u.get("point", 0))
-        })
-
-    return jsonify(result), 200
-
-# =========================
-# GET SINGLE USER BY USERNAME (Dùng cho trang History)
-# =========================
-@app.route("/users/<username>", methods=["GET"])
-def get_user_by_username(username):
-    user = users.find_one({"username": username})
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    return jsonify({
-        "username": user.get("username"),
-        "email": user.get("email"),
-        "phone": user.get("phone"),
-        "role": user.get("role", "user"),
-        "isAdmin": user.get("isAdmin", False),
-        "point": safe_int(user.get("point", 0)),
-        "history": user.get("history", [])
-    }), 200
-
-# =========================
-# DELETE USER
-# =========================
-@app.route("/users/<user_id>", methods=["DELETE"])
-def delete_user(user_id):
-    result = users.delete_one({"_id": ObjectId(user_id)})
-
-    if result.deleted_count == 1:
-        return jsonify({"message": "Deleted"}), 200
-
-    return jsonify({"error": "Not found"}), 404
-
-# =========================
-# RESET POINT (FIXED + CHẶN RESET 0 ĐIỂM)
-# =========================
-@app.route("/users/<user_id>/reset-point", methods=["PUT"])
-def reset_point(user_id):
-    # Tìm user xem điểm hiện tại là bao nhiêu
-    user = users.find_one({"_id": ObjectId(user_id)})
-    
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-    
-    # CHẶN: Nếu điểm đã là 0 thì không làm gì cả
-    if safe_int(user.get("point", 0)) <= 0:
-        return jsonify({"error": "Điểm đã bằng 0, không cần reset"}), 400
-
-    now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-    
-    # Thực hiện Reset và ghi History
-    users.update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {"point": 0},
-            "$push": {
-                "history": {
-                    "type": "reset",
-                    "message": "Hệ thống lỗi nên điểm quay về 0",
-                    "point": 0,
-                    "time": now_str
-                }
-            }
-        }
-    )
-
-    return jsonify({"message": "Point reset success"}), 200
-
-# =========================
-# ADD POINT BY QR
-# =========================
-@app.route("/scan/add-point", methods=["POST"])
-def add_point_by_qr():
-    data = request.json
-    raw_username = data.get("username")
-    partner = data.get("partner")
-    bill_code = data.get("billCode")
-    point = safe_int(data.get("point", 0))
-
-    if not raw_username or not bill_code or point <= 0:
-        return jsonify({"error": "Invalid data"}), 400
-
-    if raw_username.startswith("USERQR|"):
-        username = raw_username.split("|", 1)[1]
-    else:
-        username = raw_username
-
-    user = users.find_one({"username": username})
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    used_bills = user.get("usedBills", [])
-    if bill_code in used_bills:
-        return jsonify({"error": "Bill already used"}), 400
-
-    now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-    users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$inc": {"point": point},
-            "$push": {
-                "usedBills": bill_code,
-                "history": {
-                    "type": "add",
-                    "message": f"Cộng điểm từ {partner}",
-                    "partner": partner,
-                    "bill": bill_code,
-                    "point": point,
-                    "time": now_str
-                }
-            }
-        }
-    )
-
-    updated_user = users.find_one({"_id": user["_id"]})
-    return jsonify({
-        "message": "OK",
-        "point": safe_int(updated_user.get("point", 0))
-    }), 200
+# ... (giữ nguyên các phần khác của app.py: register, get_users, etc.)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))

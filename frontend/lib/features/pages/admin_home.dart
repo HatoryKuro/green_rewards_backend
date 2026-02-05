@@ -35,7 +35,7 @@ class AdminHome extends StatelessWidget {
                   'assets/icon/app_icon2.png',
                   width: 42,
                   height: 42,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.scaleDown,
                 ),
               ),
             ),

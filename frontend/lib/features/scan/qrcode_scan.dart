@@ -11,6 +11,42 @@ class ScanQR extends StatefulWidget {
 
 class _ScanPageState extends State<ScanQR> {
   bool scanned = false;
+  List<Map<String, dynamic>> partners = [];
+  bool isLoadingPartners = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPartners();
+  }
+
+  Future<void> _loadPartners() async {
+    setState(() => isLoadingPartners = true);
+    try {
+      final response = await ApiService.getPartnerNames();
+      setState(() {
+        partners = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      // Fallback: dùng danh sách hardcode nếu API fail
+      setState(() {
+        partners = [
+          {'name': 'May Cha'},
+          {'name': 'TuTiMi'},
+          {'name': 'Sunday Basic'},
+          {'name': 'Sóng Sánh'},
+          {'name': 'Te Amo'},
+          {'name': 'Trà Sữa Boss'},
+          {'name': 'Hồng Trà Ngô Gia'},
+          {'name': 'Lục Trà Thăng Hoa'},
+          {'name': 'Viên Viên'},
+          {'name': 'TocoToco'},
+        ];
+      });
+    } finally {
+      setState(() => isLoadingPartners = false);
+    }
+  }
 
   Future<void> handleQR(String raw) async {
     if (scanned) return;
@@ -28,7 +64,11 @@ class _ScanPageState extends State<ScanQR> {
     final result = await showDialog<_ScanResult>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _AddPointDialog(username: username),
+      builder: (_) => _AddPointDialog(
+        username: username,
+        partners: partners,
+        isLoadingPartners: isLoadingPartners,
+      ),
     );
 
     if (result == null || result.point <= 0) {
@@ -170,8 +210,14 @@ class _ScanResult {
 /// =======================
 class _AddPointDialog extends StatefulWidget {
   final String username;
+  final List<Map<String, dynamic>> partners;
+  final bool isLoadingPartners;
 
-  const _AddPointDialog({required this.username});
+  const _AddPointDialog({
+    required this.username,
+    required this.partners,
+    required this.isLoadingPartners,
+  });
 
   @override
   State<_AddPointDialog> createState() => _AddPointDialogState();
@@ -181,20 +227,17 @@ class _AddPointDialogState extends State<_AddPointDialog> {
   final billController = TextEditingController();
   final moneyController = TextEditingController();
 
-  String partner = 'May Cha';
+  String selectedPartner = '';
+  bool isLoading = false;
 
-  final partners = [
-    'May Cha',
-    'TuTiMi',
-    'Sunday Basic',
-    'Sóng Sánh',
-    'Te Amo',
-    'Trà Sữa Boss',
-    'Hồng Trà Ngô Gia',
-    'Lục Trà Thăng Hoa',
-    'Viên Viên',
-    'TocoToco',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Chọn partner đầu tiên trong danh sách
+    if (widget.partners.isNotEmpty) {
+      selectedPartner = widget.partners[0]['name'] ?? '';
+    }
+  }
 
   int calcPoint(int money) => (money ~/ 1000) * 2;
 
@@ -214,41 +257,133 @@ class _AddPointDialogState extends State<_AddPointDialog> {
       ),
       content: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'User: ${widget.username}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: partner,
-              items: partners
-                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                  .toList(),
-              onChanged: (v) => setState(() => partner = v!),
-              decoration: const InputDecoration(labelText: 'Partner'),
-            ),
-            const SizedBox(height: 8),
+
+            // Partner Dropdown
+            if (widget.isLoadingPartners)
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Đang tải danh sách đối tác...'),
+                  SizedBox(height: 8),
+                  LinearProgressIndicator(),
+                ],
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Đối tác:',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedPartner.isNotEmpty
+                            ? selectedPartner
+                            : null,
+                        isExpanded: true,
+                        hint: const Text('Chọn đối tác'),
+                        items: widget.partners.map((partner) {
+                          return DropdownMenuItem<String>(
+                            value: partner['name']?.toString() ?? '',
+                            child: Text(partner['name']?.toString() ?? ''),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              selectedPartner = newValue;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+            const SizedBox(height: 16),
+
+            // Mã Bill
             TextField(
               controller: billController,
               decoration: const InputDecoration(
-                labelText: 'Mã Bill',
+                labelText: 'Mã Bill *',
                 border: OutlineInputBorder(),
+                hintText: 'Nhập mã hóa đơn',
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // Số tiền
             TextField(
               controller: moneyController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Số tiền (VNĐ)',
+                labelText: 'Số tiền (VNĐ) *',
                 border: OutlineInputBorder(),
+                hintText: 'Ví dụ: 50000',
+                suffixText: 'VNĐ',
+              ),
+              onChanged: (value) {
+                // Cập nhật điểm tự động khi nhập tiền
+                final money = int.tryParse(value) ?? 0;
+                if (money > 0) {
+                  final points = calcPoint(money);
+                  // Có thể hiển thị điểm dự tính ở đây nếu cần
+                }
+              },
+            ),
+
+            // Hiển thị điểm tính được
+            if (moneyController.text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    const Text('Điểm sẽ cộng: '),
+                    Text(
+                      '${calcPoint(int.tryParse(moneyController.text) ?? 0)} điểm',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 4),
+            Text(
+              'Công thức: 2 điểm / 1000 VNĐ',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
               ),
             ),
           ],
         ),
       ),
       actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
@@ -258,13 +393,33 @@ class _AddPointDialogState extends State<_AddPointDialog> {
           ),
           onPressed: () {
             final money = int.tryParse(moneyController.text) ?? 0;
-            if (money <= 0 || billController.text.isEmpty) return;
+
+            if (selectedPartner.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Vui lòng chọn đối tác')),
+              );
+              return;
+            }
+
+            if (billController.text.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Vui lòng nhập mã bill')),
+              );
+              return;
+            }
+
+            if (money <= 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Vui lòng nhập số tiền hợp lệ')),
+              );
+              return;
+            }
 
             Navigator.pop(
               context,
               _ScanResult(
                 point: calcPoint(money),
-                partner: partner,
+                partner: selectedPartner,
                 billCode: billController.text.trim(),
               ),
             );
@@ -273,5 +428,12 @@ class _AddPointDialogState extends State<_AddPointDialog> {
         ),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    billController.dispose();
+    moneyController.dispose();
+    super.dispose();
   }
 }

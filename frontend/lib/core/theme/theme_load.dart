@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../features/auth/login.dart';
 
@@ -13,19 +12,32 @@ class ThemeLoadPage extends StatefulWidget {
 class _ThemeLoadPageState extends State<ThemeLoadPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // ⏱ Hiệu ứng quay chậm và mượt hơn
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat();
+    );
 
-    // ⏭ Chuyển trang sau 5 giây
-    Timer(const Duration(seconds: 5), () {
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
+
+    _controller.forward();
+
+    // Chuyển trang sau 3 giây
+    Timer(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -47,136 +59,121 @@ class _ThemeLoadPageState extends State<ThemeLoadPage>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1B5E20), Color(0xFF43A047), Color(0xFF81C784)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047)],
           ),
         ),
-        child: Stack(
-          children: [
-            // 🌿 Họa tiết trang trí chìm
-            Positioned(
-              top: -50,
-              right: -50,
-              child: Icon(
-                Icons.eco,
-                size: 200,
-                color: Colors.white.withOpacity(0.1),
-              ),
-            ),
-
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // LOGO TRƯỜNG
-                  Image.asset(
-                    'assets/images/logo_truong.png',
-                    width: 180,
-                    height: 180,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 60),
-
-                  // 🌱 HIỆU ỨNG LOADING CHUYÊN NGHIỆP
-                  Stack(
-                    alignment: Alignment.center,
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _fadeAnimation.value,
+                child: Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Vòng cung vẽ bằng CustomPainter
-                      RotationTransition(
-                        turns: _controller,
-                        child: SizedBox(
-                          width: 150,
-                          height: 150,
-                          child: CustomPaint(painter: LeafLoaderPainter()),
+                      // Logo trường nổi bật
+                      Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(150),
+                          child: Image.asset(
+                            'assets/images/logo_truong.png',
+                            fit: BoxFit.scaleDown,
+                          ),
                         ),
                       ),
-                      // Chữ Loading nằm ở giữa tâm vòng xoay
-                      const Text(
-                        'Loading...',
+                      const SizedBox(height: 40),
+                      // Loading indicator đơn giản
+                      Container(
+                        width: 120,
+                        height: 120,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Vòng tròn nền
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.3),
+                                  width: 3,
+                                ),
+                              ),
+                            ),
+
+                            // Vòng tròn loading
+                            CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                              strokeWidth: 4,
+                              backgroundColor: Colors.transparent,
+                            ),
+
+                            // Icon lá nhỏ ở giữa
+                            Icon(Icons.eco, size: 30, color: Colors.white),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+
+                      // Tên ứng dụng
+                      Text(
+                        'GREEN REWARDS',
                         style: TextStyle(
                           color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: Offset(2, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Loading text
+                      Text(
+                        'Đang khởi tạo...',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
                           fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 40),
-
-                  // Slogan hoặc tên ứng dụng phía dưới
-                  Text(
-                    'GREEN REWARDS',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
-}
-
-// 🎨 Lớp vẽ vòng cung và chiếc lá dẫn đầu
-class LeafLoaderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double strokeWidth = 6.0;
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - strokeWidth) / 2;
-
-    // 1. Vẽ vòng tròn nền mờ
-    final backgroundPaint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
-    canvas.drawCircle(center, radius, backgroundPaint);
-
-    // 2. Vẽ vòng cung Loading (Gradient)
-    final arcPaint = Paint()
-      ..shader = SweepGradient(
-        colors: [Colors.transparent, Colors.white],
-        stops: [0.0, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = strokeWidth;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2, // Bắt đầu từ đỉnh
-      1.5 * pi, // Độ dài vòng cung
-      false,
-      arcPaint,
-    );
-
-    // 3. Vẽ chiếc lá ở điểm đầu của vòng cung
-    final leafPainter = TextPainter(
-      text: TextSpan(text: ' ', style: TextStyle(fontSize: 24)),
-      textDirection: TextDirection.ltr,
-    );
-    leafPainter.layout();
-
-    // Tính toán vị trí để "con mèo" (chiếc lá) luôn nằm ở đầu vòng xoay
-    final angle = -pi / 2 + (1.5 * pi); // Vị trí kết thúc của vòng cung
-    final leafOffset = Offset(
-      center.dx + radius * cos(angle) - (leafPainter.width / 2),
-      center.dy + radius * sin(angle) - (leafPainter.height / 2),
-    );
-
-    leafPainter.paint(canvas, leafOffset);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
