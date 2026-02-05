@@ -7,7 +7,6 @@ import hashlib
 import os
 from werkzeug.utils import secure_filename
 from io import BytesIO
-
 app = Flask(__name__)
 CORS(app)
 

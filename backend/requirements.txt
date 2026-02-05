@@ -3,4 +3,3 @@ flask-cors
 pymongo
 dnspython
 gunicorn
-gridfs
