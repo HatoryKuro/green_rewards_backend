@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/services/api_service.dart';
+import '../../core/models/partner.dart';
 
 class PartnerCreate extends StatefulWidget {
   const PartnerCreate({super.key});
@@ -12,19 +13,21 @@ class PartnerCreate extends StatefulWidget {
 
 class _PartnerCreateState extends State<PartnerCreate> {
   final _formKey = GlobalKey<FormState>();
+  final List<String> typeOptions = [
+    'trà',
+    'trà sữa',
+    'đồ uống',
+    'cà phê',
+    'sinh tố',
+    'detox',
+  ];
 
   final nameController = TextEditingController();
-  final typeController = TextEditingController();
-  final priceController = TextEditingController();
-  final segmentController = TextEditingController();
   final descriptionController = TextEditingController();
-
+  String selectedType = 'trà sữa';
   File? _selectedImage;
-  String? _imageId; // ID của ảnh sau khi upload
   bool isLoading = false;
-  bool isUploadingImage = false;
 
-  // Chọn ảnh từ gallery
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
@@ -32,148 +35,110 @@ class _PartnerCreateState extends State<PartnerCreate> {
     if (pickedFile != null) {
       setState(() {
         _selectedImage = File(pickedFile.path);
-        _imageId = null; // Reset imageId khi chọn ảnh mới
       });
     }
   }
 
-  // Upload ảnh lên server
-  Future<void> _uploadImage() async {
-    if (_selectedImage == null) return;
-
-    setState(() => isUploadingImage = true);
-
-    try {
-      // Ở đây chưa có partner_id, nên chưa thể upload ảnh
-      // Chúng ta sẽ upload ảnh sau khi tạo partner
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ảnh sẽ được upload sau khi tạo partner')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: ${e.toString()}')));
-    } finally {
-      setState(() => isUploadingImage = false);
-    }
-  }
-
-  // Tạo partner mới
   Future<void> _createPartner() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => isLoading = true);
 
     try {
-      // Tạo partner trước (chưa có ảnh)
+      // 1. Tạo partner trước
       final result = await ApiService.createPartner(
         name: nameController.text,
-        type: typeController.text,
-        priceRange: priceController.text,
-        segment: segmentController.text,
+        type: selectedType,
         description: descriptionController.text,
-        imageId: _imageId, // Có thể null
       );
 
       final partnerId = result['partner_id'];
 
-      // Nếu có ảnh đã chọn, upload ảnh
+      // 2. Nếu có ảnh, upload ảnh
       if (_selectedImage != null && partnerId != null) {
         try {
-          final uploadResult = await ApiService.uploadPartnerImage(
+          await ApiService.uploadPartnerImage(
             partnerId: partnerId,
             imagePath: _selectedImage!.path,
           );
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Tạo partner và upload ảnh thành công')),
-          );
         } catch (e) {
-          // Partner đã tạo nhưng upload ảnh thất bại
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Partner đã tạo, nhưng upload ảnh thất bại: $e'),
-            ),
-          );
+          // Vẫn thành công nếu partner đã tạo
+          print('Lỗi upload ảnh: $e');
         }
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Tạo partner thành công')));
       }
 
-      // Clear form
-      _resetForm();
+      // 3. Thông báo thành công
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Tạo đối tác thành công')));
 
-      // Quay lại màn hình trước sau 2 giây
-      Future.delayed(Duration(seconds: 1), () {
-        Navigator.pop(context);
-      });
+        // Reset form
+        _resetForm();
+
+        // Quay lại sau 1 giây
+        Future.delayed(const Duration(seconds: 1), () {
+          Navigator.pop(context);
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: ${e.toString()}')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi: ${e.toString()}')));
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
   void _resetForm() {
     _formKey.currentState?.reset();
     nameController.clear();
-    typeController.clear();
-    priceController.clear();
-    segmentController.clear();
     descriptionController.clear();
     setState(() {
+      selectedType = 'trà sữa';
       _selectedImage = null;
-      _imageId = null;
     });
   }
 
   Widget _buildImagePreview() {
     if (_selectedImage != null) {
-      return Column(
-        children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(_selectedImage!, fit: BoxFit.cover),
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Đã chọn ảnh',
-            style: TextStyle(color: Colors.green, fontSize: 12),
-          ),
-        ],
+      return Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(_selectedImage!, fit: BoxFit.cover),
+        ),
       );
     }
 
-    return Column(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey[300]!),
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.image, color: Colors.grey[400], size: 40),
+          const SizedBox(height: 8),
+          Text(
+            'Chọn ảnh',
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
           ),
-          child: Icon(Icons.image, color: Colors.grey[400], size: 40),
-        ),
-        SizedBox(height: 8),
-        Text(
-          'Chưa có ảnh',
-          style: TextStyle(color: Colors.grey[500], fontSize: 12),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -184,7 +149,7 @@ class _PartnerCreateState extends State<PartnerCreate> {
         title: const Text('Thêm Đối Tác Mới'),
         actions: [
           IconButton(
-            icon: Icon(Icons.clear),
+            icon: const Icon(Icons.clear),
             onPressed: _resetForm,
             tooltip: 'Xóa form',
           ),
@@ -197,92 +162,63 @@ class _PartnerCreateState extends State<PartnerCreate> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Preview ảnh
+              // Ảnh
               Center(
                 child: GestureDetector(
                   onTap: _pickImage,
                   child: _buildImagePreview(),
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Center(
                 child: TextButton.icon(
                   onPressed: _pickImage,
-                  icon: Icon(Icons.photo_library, size: 18),
+                  icon: const Icon(Icons.photo_library, size: 18),
                   label: Text(_selectedImage == null ? 'Chọn ảnh' : 'Đổi ảnh'),
                 ),
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-              // Tên partner
+              // Tên đối tác
               TextFormField(
                 controller: nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Tên đối tác*',
+                  labelText: 'Tên cửa hàng*',
                   hintText: 'Ví dụ: May Cha',
-                  prefixIcon: Icon(Icons.business),
+                  prefixIcon: Icon(Icons.store),
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập tên đối tác';
-                  }
-                  if (value.length < 2) {
-                    return 'Tên quá ngắn';
+                    return 'Vui lòng nhập tên cửa hàng';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
 
-              // Loại hình
-              TextFormField(
-                controller: typeController,
+              // Loại hình (Dropdown)
+              DropdownButtonFormField<String>(
+                value: selectedType,
                 decoration: const InputDecoration(
                   labelText: 'Loại hình*',
-                  hintText: 'Ví dụ: Trà sữa, Ăn uống, Giải trí',
                   prefixIcon: Icon(Icons.category),
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập loại hình';
-                  }
-                  return null;
+                items: typeOptions.map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (newValue) {
+                  setState(() {
+                    selectedType = newValue!;
+                  });
                 },
-              ),
-              const SizedBox(height: 16),
-
-              // Phân khúc giá
-              TextFormField(
-                controller: priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Phân khúc giá*',
-                  hintText: 'Ví dụ: 25.000đ – 45.000đ',
-                  prefixIcon: Icon(Icons.attach_money),
-                  border: OutlineInputBorder(),
-                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập phân khúc giá';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Phân khúc khách hàng
-              TextFormField(
-                controller: segmentController,
-                decoration: const InputDecoration(
-                  labelText: 'Phân khúc khách hàng*',
-                  hintText: 'Ví dụ: Sinh viên – giới trẻ',
-                  prefixIcon: Icon(Icons.people),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập phân khúc khách hàng';
+                    return 'Vui lòng chọn loại hình';
                   }
                   return null;
                 },
@@ -292,10 +228,10 @@ class _PartnerCreateState extends State<PartnerCreate> {
               // Mô tả
               TextFormField(
                 controller: descriptionController,
-                maxLines: 3,
+                maxLines: 4,
                 decoration: const InputDecoration(
                   labelText: 'Mô tả*',
-                  hintText: 'Mô tả về đối tác',
+                  hintText: 'Mô tả về cửa hàng...',
                   prefixIcon: Icon(Icons.description),
                   border: OutlineInputBorder(),
                   alignLabelWithHint: true,
@@ -303,9 +239,6 @@ class _PartnerCreateState extends State<PartnerCreate> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Vui lòng nhập mô tả';
-                  }
-                  if (value.length < 10) {
-                    return 'Mô tả quá ngắn';
                   }
                   return null;
                 },
@@ -317,40 +250,26 @@ class _PartnerCreateState extends State<PartnerCreate> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: (isLoading || isUploadingImage)
-                      ? null
-                      : _createPartner,
+                  onPressed: isLoading ? null : _createPartner,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isLoading || isUploadingImage)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
+                        )
+                      : const Text(
+                          'TẠO ĐỐI TÁC',
+                          style: TextStyle(fontSize: 16),
                         ),
-                      Text(
-                        isLoading
-                            ? 'ĐANG TẠO...'
-                            : isUploadingImage
-                            ? 'ĐANG UPLOAD...'
-                            : 'TẠO ĐỐI TÁC',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ],
@@ -363,9 +282,6 @@ class _PartnerCreateState extends State<PartnerCreate> {
   @override
   void dispose() {
     nameController.dispose();
-    typeController.dispose();
-    priceController.dispose();
-    segmentController.dispose();
     descriptionController.dispose();
     super.dispose();
   }

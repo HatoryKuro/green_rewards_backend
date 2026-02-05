@@ -352,12 +352,12 @@ class ApiService {
     }
   }
 
-  // 3. Tạo partner mới (Admin)
+  // api_service.dart - Sửa phần Partner API
+
+  // 3. Tạo partner mới (Admin) - ĐÃ SỬA: bỏ priceRange và segment
   static Future<Map<String, dynamic>> createPartner({
     required String name,
     required String type,
-    required String priceRange,
-    required String segment,
     required String description,
     String? imageId,
   }) async {
@@ -368,8 +368,6 @@ class ApiService {
         body: jsonEncode({
           "name": name,
           "type": type,
-          "price_range": priceRange,
-          "segment": segment,
           "description": description,
           "image_id": imageId,
         }),
@@ -386,13 +384,11 @@ class ApiService {
     }
   }
 
-  // 4. Cập nhật partner (Admin)
+  // 4. Cập nhật partner (Admin) - ĐÃ SỬA: bỏ priceRange và segment
   static Future<bool> updatePartner({
     required String partnerId,
     required String name,
     required String type,
-    required String priceRange,
-    required String segment,
     required String description,
     String? imageId,
   }) async {
@@ -403,8 +399,6 @@ class ApiService {
         body: jsonEncode({
           "name": name,
           "type": type,
-          "price_range": priceRange,
-          "segment": segment,
           "description": description,
           "image_id": imageId,
         }),

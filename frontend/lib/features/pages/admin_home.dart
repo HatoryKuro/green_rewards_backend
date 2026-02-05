@@ -142,6 +142,19 @@ class AdminHome extends StatelessWidget {
                         );
                       },
                     ),
+                    _adminActionButton(
+                      icon: Icons.confirmation_num,
+                      label: 'Quản lý Voucher',
+                      color: Colors.green,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ControllVoucher(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
