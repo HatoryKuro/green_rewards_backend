@@ -151,10 +151,412 @@ if not admin:
     })
 
 # =========================
-# PARTNER ROUTES
+# AUTH ROUTES
 # =========================
 
-# 1. Lấy danh sách tất cả partners
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    identity = data.get("username")
+    password = data.get("password")
+
+    user = users.find_one({
+        "$or": [
+            {"username": identity},
+            {"email": identity},
+            {"phone": identity}
+        ]
+    })
+
+    if not user or user["password"] != hash_password(password):
+        return jsonify({"error": "Sai tài khoản hoặc mật khẩu"}), 401
+
+    return jsonify({
+        "_id": str(user["_id"]),
+        "username": user["username"],
+        "email": user["email"],
+        "phone": user["phone"],
+        "role": user.get("role", "user"),
+        "isAdmin": user.get("isAdmin", False),
+        "point": safe_int(user.get("point", 0))
+    }), 200
+
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    
+    # Kiểm tra required fields
+    required_fields = ["username", "email", "phone", "password"]
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"Thiếu trường {field}"}), 400
+    
+    # Kiểm tra trùng username
+    if users.find_one({"username": data["username"]}):
+        return jsonify({"error": "Tên đăng nhập đã tồn tại"}), 400
+    
+    # Kiểm tra trùng email
+    if users.find_one({"email": data["email"]}):
+        return jsonify({"error": "Email đã tồn tại"}), 400
+    
+    # Kiểm tra trùng số điện thoại
+    if users.find_one({"phone": data["phone"]}):
+        return jsonify({"error": "Số điện thoại đã tồn tại"}), 400
+    
+    # Tạo user mới
+    new_user = {
+        "username": data["username"],
+        "email": data["email"],
+        "phone": data["phone"],
+        "password": hash_password(data["password"]),
+        "role": "user",
+        "isAdmin": False,
+        "point": 0,
+        "usedBills": [],
+        "history": [],
+        "created_at": datetime.now()
+    }
+    
+    try:
+        result = users.insert_one(new_user)
+        return jsonify({
+            "message": "Đăng ký thành công",
+            "user_id": str(result.inserted_id)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+# =========================
+# USER MANAGEMENT ROUTES
+# =========================
+
+@app.route("/users", methods=["GET"])
+def get_all_users():
+    try:
+        users_list = users.find({"role": "user"}).sort("created_at", -1)
+        
+        result = []
+        for user in users_list:
+            result.append({
+                "_id": str(user["_id"]),
+                "id": str(user["_id"]),
+                "username": user["username"],
+                "email": user["email"],
+                "phone": user["phone"],
+                "role": user.get("role", "user"),
+                "isAdmin": user.get("isAdmin", False),
+                "point": safe_int(user.get("point", 0)),
+                "created_at": user.get("created_at", datetime.now()).isoformat()
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+@app.route("/users/<user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    try:
+        # Không cho xóa admin
+        user = users.find_one({"_id": ObjectId(user_id)})
+        if user and user.get("isAdmin"):
+            return jsonify({"error": "Không thể xóa tài khoản admin"}), 400
+        
+        result = users.delete_one({"_id": ObjectId(user_id)})
+        if result.deleted_count == 1:
+            return jsonify({"message": "Xóa user thành công"}), 200
+        else:
+            return jsonify({"error": "User không tồn tại"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+@app.route("/users/<user_id>/reset-point", methods=["PUT"])
+def reset_user_point(user_id):
+    try:
+        result = users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"point": 0}}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({"message": "Reset điểm thành công"}), 200
+        else:
+            return jsonify({"error": "User không tồn tại"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+@app.route("/users/<username>", methods=["GET"])
+def get_user_by_username(username):
+    try:
+        user = users.find_one({"username": username})
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        
+        return jsonify({
+            "_id": str(user["_id"]),
+            "username": user["username"],
+            "email": user["email"],
+            "phone": user["phone"],
+            "role": user.get("role", "user"),
+            "isAdmin": user.get("isAdmin", False),
+            "point": safe_int(user.get("point", 0)),
+            "history": user.get("history", []),
+            "usedBills": user.get("usedBills", [])
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+# =========================
+# SCAN QR & POINT ROUTES
+# =========================
+
+@app.route("/scan/add-point", methods=["POST"])
+def add_point_by_qr():
+    data = request.json
+    
+    required_fields = ["username", "partner", "billCode", "point"]
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"Thiếu trường {field}"}), 400
+    
+    username = data["username"]
+    partner = data["partner"]
+    bill_code = data["billCode"]
+    point = int(data["point"])
+    
+    # Kiểm tra user
+    user = users.find_one({"username": username})
+    if not user:
+        return jsonify({"error": "User không tồn tại"}), 404
+    
+    # Kiểm tra bill code đã dùng chưa
+    if bill_code in user.get("usedBills", []):
+        return jsonify({"error": "Hóa đơn đã được sử dụng"}), 400
+    
+    # Cập nhật điểm và lịch sử
+    new_point = user.get("point", 0) + point
+    history_entry = {
+        "date": datetime.now().isoformat(),
+        "partner": partner,
+        "billCode": bill_code,
+        "point": point,
+        "type": "earn"
+    }
+    
+    users.update_one(
+        {"username": username},
+        {
+            "$set": {"point": new_point},
+            "$push": {"history": history_entry},
+            "$addToSet": {"usedBills": bill_code}
+        }
+    )
+    
+    return jsonify({
+        "message": "Cộng điểm thành công",
+        "new_point": new_point
+    }), 200
+
+# =========================
+# VOUCHER ROUTES
+# =========================
+
+@app.route("/admin/vouchers", methods=["POST"])
+def create_voucher():
+    data = request.json
+    
+    required_fields = ["partner", "point", "maxPerUser", "expired"]
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"Thiếu trường {field}"}), 400
+    
+    new_voucher = {
+        "partner": data["partner"],
+        "point": int(data["point"]),
+        "maxPerUser": int(data["maxPerUser"]),
+        "expired": data["expired"],
+        "status": "available",
+        "created_at": datetime.now()
+    }
+    
+    try:
+        result = vouchers.insert_one(new_voucher)
+        return jsonify({
+            "message": "Tạo voucher thành công",
+            "voucher_id": str(result.inserted_id)
+        }), 201
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+@app.route("/vouchers", methods=["GET"])
+def get_available_vouchers():
+    try:
+        vouchers_list = vouchers.find({"status": "available"}).sort("point", 1)
+        
+        result = []
+        for voucher in vouchers_list:
+            result.append({
+                "_id": str(voucher["_id"]),
+                "partner": voucher["partner"],
+                "point": voucher["point"],
+                "maxPerUser": voucher["maxPerUser"],
+                "expired": voucher["expired"],
+                "status": voucher["status"]
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+@app.route("/users/<username>/exchange-voucher", methods=["POST"])
+def exchange_voucher(username):
+    data = request.json
+    voucher_id = data.get("voucher_id")
+    
+    if not voucher_id:
+        return jsonify({"error": "Thiếu voucher_id"}), 400
+    
+    # Kiểm tra user
+    user = users.find_one({"username": username})
+    if not user:
+        return jsonify({"error": "User không tồn tại"}), 404
+    
+    # Kiểm tra voucher
+    voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
+    if not voucher:
+        return jsonify({"error": "Voucher không tồn tại"}), 404
+    
+    # Kiểm tra điểm
+    if user.get("point", 0) < voucher["point"]:
+        return jsonify({"error": "Không đủ điểm để đổi"}), 400
+    
+    # Kiểm tra đã đổi voucher này chưa
+    exchanged_count = user_vouchers.count_documents({
+        "username": username,
+        "voucher_id": voucher_id
+    })
+    if exchanged_count >= voucher["maxPerUser"]:
+        return jsonify({"error": "Đã đạt giới hạn đổi voucher này"}), 400
+    
+    # Trừ điểm
+    new_point = user.get("point", 0) - voucher["point"]
+    users.update_one(
+        {"username": username},
+        {"$set": {"point": new_point}}
+    )
+    
+    # Tạo user_voucher
+    user_voucher = {
+        "username": username,
+        "voucher_id": voucher_id,
+        "partner": voucher["partner"],
+        "point": voucher["point"],
+        "status": "usable",
+        "exchanged_at": datetime.now(),
+        "used_at": None
+    }
+    user_vouchers.insert_one(user_voucher)
+    
+    return jsonify({
+        "message": "Đổi voucher thành công",
+        "new_point": new_point
+    }), 200
+
+@app.route("/users/<username>/vouchers", methods=["GET"])
+def get_user_vouchers(username):
+    try:
+        user_vouchers_list = user_vouchers.find({"username": username})
+        
+        result = []
+        for uv in user_vouchers_list:
+            result.append({
+                "_id": str(uv["_id"]),
+                "voucher_id": uv["voucher_id"],
+                "partner": uv["partner"],
+                "point": uv["point"],
+                "status": uv["status"],
+                "exchanged_at": uv.get("exchanged_at", datetime.now()).isoformat(),
+                "used_at": uv.get("used_at").isoformat() if uv.get("used_at") else None
+            })
+        
+        return jsonify({"vouchers": result}), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+@app.route("/vouchers/<voucher_id>/use", methods=["PUT"])
+def mark_voucher_used(voucher_id):
+    try:
+        result = user_vouchers.update_one(
+            {"_id": ObjectId(voucher_id)},
+            {"$set": {"status": "used", "used_at": datetime.now()}}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({"message": "Đánh dấu voucher đã sử dụng thành công"}), 200
+        else:
+            return jsonify({"error": "Voucher không tồn tại"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+@app.route("/admin/vouchers", methods=["GET"])
+def get_all_vouchers():
+    try:
+        vouchers_list = vouchers.find().sort("created_at", -1)
+        
+        result = []
+        for voucher in vouchers_list:
+            result.append({
+                "_id": str(voucher["_id"]),
+                "partner": voucher["partner"],
+                "point": voucher["point"],
+                "maxPerUser": voucher["maxPerUser"],
+                "expired": voucher["expired"],
+                "status": voucher["status"],
+                "created_at": voucher.get("created_at", datetime.now()).isoformat()
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+@app.route("/vouchers/<voucher_id>", methods=["GET"])
+def get_voucher_detail(voucher_id):
+    try:
+        voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
+        if not voucher:
+            return jsonify({"error": "Voucher không tồn tại"}), 404
+        
+        return jsonify({
+            "_id": str(voucher["_id"]),
+            "partner": voucher["partner"],
+            "point": voucher["point"],
+            "maxPerUser": voucher["maxPerUser"],
+            "expired": voucher["expired"],
+            "status": voucher["status"]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
+@app.route("/admin/vouchers/stats", methods=["GET"])
+def get_voucher_stats():
+    try:
+        total = vouchers.count_documents({})
+        available = vouchers.count_documents({"status": "available"})
+        exchanged = user_vouchers.count_documents({})
+        used = user_vouchers.count_documents({"status": "used"})
+        
+        return jsonify({
+            "total": total,
+            "available": available,
+            "exchanged": exchanged,
+            "used": used
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+
+# =========================
+# PARTNER ROUTES (giữ nguyên)
+# =========================
+
 @app.route("/partners", methods=["GET"])
 def get_partners():
     try:
@@ -178,7 +580,6 @@ def get_partners():
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
-# 2. Lấy partner theo ID
 @app.route("/partners/<partner_id>", methods=["GET"])
 def get_partner(partner_id):
     try:
@@ -199,16 +600,13 @@ def get_partner(partner_id):
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
-# 3. Tạo partner mới (Admin only)
 @app.route("/admin/partners", methods=["POST"])
 def create_partner():
     data = request.json
     
-    # Kiểm tra required fields
     if not data.get("name"):
         return jsonify({"error": "Partner name is required"}), 400
     
-    # Kiểm tra trùng tên
     existing = partners.find_one({"name": data["name"]})
     if existing:
         return jsonify({"error": "Partner name already exists"}), 400
@@ -233,7 +631,6 @@ def create_partner():
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
-# 4. Cập nhật partner (Admin only)
 @app.route("/admin/partners/<partner_id>", methods=["PUT"])
 def update_partner(partner_id):
     data = request.json
@@ -243,7 +640,6 @@ def update_partner(partner_id):
         if not partner:
             return jsonify({"error": "Partner not found"}), 404
         
-        # Kiểm tra nếu đổi tên thì không được trùng với partner khác
         if "name" in data and data["name"] != partner["name"]:
             existing = partners.find_one({"name": data["name"], "_id": {"$ne": ObjectId(partner_id)}})
             if existing:
@@ -268,16 +664,13 @@ def update_partner(partner_id):
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
-# 5. Xóa partner (Admin only - soft delete)
 @app.route("/admin/partners/<partner_id>", methods=["DELETE"])
 def delete_partner(partner_id):
     try:
-        # Kiểm tra partner có tồn tại không
         partner = partners.find_one({"_id": ObjectId(partner_id)})
         if not partner:
             return jsonify({"error": "Partner not found"}), 404
         
-        # Soft delete: đổi status thành inactive
         result = partners.update_one(
             {"_id": ObjectId(partner_id)},
             {"$set": {"status": "inactive"}}
@@ -291,7 +684,6 @@ def delete_partner(partner_id):
     except:
         return jsonify({"error": "Invalid partner ID"}), 400
 
-# 6. Lấy danh sách partner names đơn giản (cho dropdown)
 @app.route("/partners/names", methods=["GET"])
 def get_partner_names():
     try:
@@ -307,37 +699,6 @@ def get_partner_names():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
-
-# =========================
-# LOGIN
-# =========================
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-    identity = data.get("username")
-    password = data.get("password")
-
-    user = users.find_one({
-        "$or": [
-            {"username": identity},
-            {"email": identity},
-            {"phone": identity}
-        ]
-    })
-
-    if not user or user["password"] != hash_password(password):
-        return jsonify({"error": "Login failed"}), 401
-
-    return jsonify({
-        "username": user["username"],
-        "email": user["email"],
-        "phone": user["phone"],
-        "role": user.get("role", "user"),
-        "isAdmin": user.get("isAdmin", False),
-        "point": safe_int(user.get("point", 0))
-    }), 200
-
-# ... (giữ nguyên các phần khác của app.py: register, get_users, etc.)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))

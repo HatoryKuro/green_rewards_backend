@@ -129,7 +129,6 @@ class ApiService {
 
   // ================== GET USER BY USERNAME (Dùng cho History) ==================
   static Future<Map<String, dynamic>> getUserByUsername(String username) async {
-    // Lưu ý: Route này phải khớp với @app.route("/users/<username>") bên Backend
     final res = await http.get(
       Uri.parse('$baseUrl/users/$username'),
       headers: {'Content-Type': 'application/json'},
@@ -145,7 +144,7 @@ class ApiService {
 
     final data = jsonDecode(res.body);
 
-    // Đảm bảo history luôn có kiểu dữ liệu chuẩn List để không bị crash giao diện
+    // Đảm bảo history luôn có
     if (data['history'] == null || data['history'] is! List) {
       data['history'] = [];
     }

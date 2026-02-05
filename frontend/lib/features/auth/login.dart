@@ -17,75 +17,76 @@ class _LoginPageState extends State<LoginPage> {
   final userCtrl = TextEditingController();
   final passCtrl = TextEditingController();
 
+  bool loading = false;
+  String error = "";
+
   // ================= LOGIN =================
   Future<void> login() async {
-    final res = await ApiService.login(
-      userCtrl.text.trim(),
-      passCtrl.text.trim(),
-    );
-
-    // 🔥 FIX LỖI CONTEXT CHẾT
-    if (!mounted) return;
-
-    if (res == null) {
-      _showErrorPopup("Sai tài khoản hoặc mật khẩu");
+    if (userCtrl.text.isEmpty || passCtrl.text.isEmpty) {
+      setState(() {
+        error = "Vui lòng điền đầy đủ thông tin";
+      });
       return;
     }
 
-    final role = res["role"];
-    final username = res["username"];
+    setState(() {
+      loading = true;
+      error = "";
+    });
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', username);
-
-    // 🔥 FIX TIẾP (sau await)
-    if (!mounted) return;
-
-    if (role == "admin") {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminHome()),
+    try {
+      final res = await ApiService.login(
+        userCtrl.text.trim(),
+        passCtrl.text.trim(),
       );
-    } else if (role == "user") {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const UserHome()),
-      );
-    } else {
-      _showErrorPopup("Role không hợp lệ");
+
+      // 🔥 FIX LỖI CONTEXT CHẾT
+      if (!mounted) return;
+
+      setState(() => loading = false);
+
+      if (res == null) {
+        setState(() {
+          error = "Sai tài khoản hoặc mật khẩu";
+        });
+        return;
+      }
+
+      final role = res["role"];
+      final username = res["username"];
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);
+
+      // 🔥 FIX TIẾP (sau await)
+      if (!mounted) return;
+
+      if (role == "admin") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminHome()),
+        );
+      } else if (role == "user") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const UserHome()),
+        );
+      } else {
+        setState(() {
+          error = "Role không hợp lệ";
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = "Lỗi kết nối: $e";
+      });
     }
-  }
-
-  // ================= POPUP ERROR =================
-  void _showErrorPopup(String message) {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: const [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text("Đăng nhập thất bại"),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
   }
 
   // ================= CONFIRM REGISTER =================
   void _confirmGoRegister() {
-    if (!mounted) return;
-
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -188,6 +189,7 @@ class _LoginPageState extends State<LoginPage> {
                       decoration: const InputDecoration(
                         labelText: 'Username / Email / Phone',
                         prefixIcon: Icon(Icons.person),
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -197,25 +199,50 @@ class _LoginPageState extends State<LoginPage> {
                       decoration: const InputDecoration(
                         labelText: 'Password',
                         prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
                       ),
                     ),
+                    if (error.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        error,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 26),
                     SizedBox(
                       width: double.infinity,
+                      height: 50,
                       child: ElevatedButton(
-                        onPressed: login,
+                        onPressed: loading ? null : login,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        child: const Text(
-                          'ĐĂNG NHẬP',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
+                        child: loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'ĐĂNG NHẬP',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: _confirmGoRegister,
+                      onPressed: loading ? null : _confirmGoRegister,
                       child: const Text(
                         'Tạo tài khoản user',
                         style: TextStyle(color: Colors.green),
