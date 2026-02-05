@@ -74,8 +74,8 @@ class _ThemeLoadPageState extends State<ThemeLoadPage>
                   // LOGO TRƯỜNG
                   Image.asset(
                     'assets/images/logo_truong.png',
-                    width: 120,
-                    height: 120,
+                    width: 180,
+                    height: 180,
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 60),

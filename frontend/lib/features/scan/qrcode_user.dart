@@ -40,7 +40,14 @@ class _QrCodeUserState extends State<QrCodeUser> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('QR Code của tôi'),
+        title: const Text(
+          'QR Code của tôi',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         backgroundColor: Colors.green,
       ),
       backgroundColor: Colors.green.shade50,
