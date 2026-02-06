@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -311,7 +312,7 @@ class ApiService {
     }
   }
 
-  // 7. Lấy chi tiết voucher - ĐÃ SỬA endpoint
+  // 7. Lấy chi tiết voucher
   static Future<Map<String, dynamic>> getVoucherDetail(String voucherId) async {
     try {
       final res = await http.get(
@@ -522,7 +523,18 @@ class ApiService {
     }
   }
 
-  // 2. Lấy ảnh URL từ image_id
+  // 2. Upload ảnh từ File object
+  static Future<Map<String, dynamic>> uploadPartnerImageFile({
+    required String partnerId,
+    required File imageFile,
+  }) async {
+    return await uploadPartnerImage(
+      partnerId: partnerId,
+      imagePath: imageFile.path,
+    );
+  }
+
+  // 3. Lấy ảnh URL từ image_id
   static String getImageUrl(String? imageId) {
     if (imageId == null || imageId.isEmpty || imageId == 'null') {
       return '';
@@ -530,7 +542,7 @@ class ApiService {
     return '$baseUrl/image/$imageId';
   }
 
-  // 3. Xóa ảnh
+  // 4. Xóa ảnh
   static Future<bool> deleteImage(String imageId) async {
     try {
       final res = await http.delete(
@@ -542,5 +554,26 @@ class ApiService {
     } catch (e) {
       return false;
     }
+  }
+
+  // ================== ERROR HANDLER ==================
+  static String cleanErrorMessage(String error) {
+    // Loại bỏ phần "Exception: Lỗi kết nối:" để hiển thị gọn hơn
+    return error
+        .replaceAll('Exception: Lỗi kết nối: ', '')
+        .replaceAll('Exception: ', '')
+        .trim();
+  }
+
+  // ================== COMMON ERROR HANDLING ==================
+  static void handleApiError(http.Response response) {
+    if (response.statusCode == 503) {
+      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+    }
+
+    final data = jsonDecode(response.body);
+    throw Exception(
+      data['error'] ?? "API request failed with status ${response.statusCode}",
+    );
   }
 }
