@@ -17,7 +17,6 @@ class _ManagementState extends State<Management> {
   String errorMessage = '';
   bool isCurrentAdmin = false;
   bool isCurrentManager = false;
-  String currentUserId = '';
 
   @override
   void initState() {
@@ -30,12 +29,10 @@ class _ManagementState extends State<Management> {
     try {
       final isAdmin = await UserPreferences.isAdmin();
       final role = await UserPreferences.getRole();
-      final id = await UserPreferences.getUserId();
 
       setState(() {
         isCurrentAdmin = isAdmin;
         isCurrentManager = role == 'manager' || role == 'admin';
-        currentUserId = id ?? '';
       });
     } catch (e) {
       print('Lỗi khi load thông tin user hiện tại: $e');
@@ -78,28 +75,17 @@ class _ManagementState extends State<Management> {
   /// XOÁ USER (VỚI PHÂN QUYỀN)
   /// =======================
   Future<void> confirmDeleteUser(Map user) async {
-    final String userId = user["id"] ?? '';
+    final String userId = user["id"];
     final String username = user["username"] ?? "người dùng";
-    final String userRole = user["role"] ?? "user";
-    final bool isUserAdmin = userRole == "admin";
-    final bool isUserManager = userRole == "manager";
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    final bool isUserManager =
+        user["isManager"] == true || user["role"] == "manager";
 
     // 🔥 PHÂN QUYỀN XOÁ
     if (isUserAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Không thể xóa tài khoản admin'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Không cho phép xóa chính mình
-    if (userId == currentUserId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không thể xóa tài khoản của chính mình'),
           backgroundColor: Colors.red,
         ),
       );
@@ -164,10 +150,10 @@ class _ManagementState extends State<Management> {
   /// NÂNG/HẠ ROLE (CHỈ ADMIN)
   /// =======================
   Future<void> confirmChangeRole(Map user) async {
-    final String userId = user["id"] ?? '';
+    final String userId = user["id"];
     final String username = user["username"] ?? "người dùng";
     final String currentRole = user["role"] ?? "user";
-    final bool isUserAdmin = currentRole == "admin";
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
 
     // Chỉ admin mới có quyền này
     if (!isCurrentAdmin) {
@@ -185,17 +171,6 @@ class _ManagementState extends State<Management> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Không thể thay đổi role của admin'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Không cho phép thay đổi role của chính mình
-    if (userId == currentUserId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không thể thay đổi role của chính mình'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -257,8 +232,8 @@ class _ManagementState extends State<Management> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result["message"] ?? 'Thay đổi role thất bại'),
+          const SnackBar(
+            content: Text('Thay đổi role thất bại'),
             backgroundColor: Colors.red,
           ),
         );
@@ -280,21 +255,18 @@ class _ManagementState extends State<Management> {
   /// RESET POINT (VỚI PHÂN QUYỀN)
   /// =======================
   Future<void> confirmResetPoint(Map user) async {
-    final String userId = user["id"] ?? '';
+    final String userId = user["id"];
     final String username = user["username"] ?? "người dùng";
-    final String userRole = user["role"] ?? "user";
     final int currentPoint = (user["point"] is num)
         ? (user["point"] as num).toInt()
         : 0;
 
-    // Kiểm tra nếu user là admin hoặc manager
-    final bool isUserAdmin = userRole == "admin";
-    final bool isUserManager = userRole == "manager";
-
-    if (isUserAdmin || isUserManager) {
+    // Kiểm tra nếu user là admin
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    if (isUserAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không thể reset điểm của admin hoặc quản lý'),
+          content: Text('Không thể reset điểm của admin'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -381,17 +353,19 @@ class _ManagementState extends State<Management> {
   /// LẤY DANH SÁCH CÁC NÚT CHỨC NĂNG
   /// =======================
   List<Widget> _getActionButtons(Map user) {
-    final String userId = user["id"] ?? '';
-    final String userRole = user["role"] ?? "user";
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    final bool isUserManager =
+        user["isManager"] == true || user["role"] == "manager";
     final int point = (user["point"] is num)
         ? (user["point"] as num).toInt()
         : 0;
     final String username = user["username"] ?? "";
+    final String currentRole = user["role"] ?? "user";
 
     List<Widget> buttons = [];
 
-    // Nút xem lịch sử (cho tất cả user không phải admin và manager)
-    if (userRole == "user") {
+    // Nút xem lịch sử (cho tất cả user không phải admin)
+    if (!isUserAdmin) {
       buttons.add(
         IconButton(
           icon: const Icon(Icons.history, size: 22),
@@ -410,7 +384,7 @@ class _ManagementState extends State<Management> {
     }
 
     // Nút reset điểm (chỉ cho user thường, không dành cho admin/manager)
-    if (userRole == "user" && point > 0) {
+    if (!isUserAdmin && !isUserManager && point > 0) {
       buttons.add(
         IconButton(
           icon: const Icon(Icons.refresh, size: 22),
@@ -421,16 +395,16 @@ class _ManagementState extends State<Management> {
       );
     }
 
-    // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager, không cho tự sửa mình)
-    if (isCurrentAdmin && userId != currentUserId && userRole != "admin") {
+    // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager)
+    if (isCurrentAdmin && !isUserAdmin) {
       buttons.add(
         IconButton(
           icon: Icon(
-            userRole == "user" ? Icons.arrow_upward : Icons.arrow_downward,
+            currentRole == "user" ? Icons.arrow_upward : Icons.arrow_downward,
             size: 22,
           ),
           color: Colors.blue,
-          tooltip: userRole == "user" ? 'Nâng lên quản lý' : 'Hạ xuống user',
+          tooltip: currentRole == "user" ? 'Nâng lên quản lý' : 'Hạ xuống user',
           onPressed: () => confirmChangeRole(user),
         ),
       );
@@ -438,14 +412,14 @@ class _ManagementState extends State<Management> {
 
     // Nút xoá user
     bool canDelete = false;
-    if (isCurrentAdmin && userId != currentUserId && userRole != "admin") {
-      // Admin có thể xoá manager và user (trừ admin khác và chính mình)
+    if (isCurrentAdmin && !isUserAdmin) {
+      // Admin có thể xoá manager và user
       canDelete = true;
     } else if (isCurrentManager &&
         !isCurrentAdmin &&
-        userId != currentUserId &&
-        userRole == "user") {
-      // Manager chỉ có thể xoá user thường (trừ chính mình)
+        !isUserAdmin &&
+        !isUserManager) {
+      // Manager chỉ có thể xoá user thường
       canDelete = true;
     }
 
@@ -467,15 +441,17 @@ class _ManagementState extends State<Management> {
   /// HIỂN THỊ BADGE THEO ROLE
   /// =======================
   Widget _buildRoleBadge(Map user) {
-    final String role = user["role"] ?? "user";
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    final bool isUserManager =
+        user["isManager"] == true || user["role"] == "manager";
 
     String roleText = 'USER';
     Color color = Colors.green;
 
-    if (role == "admin") {
+    if (isUserAdmin) {
       roleText = 'ADMIN';
       color = Colors.red;
-    } else if (role == "manager") {
+    } else if (isUserManager) {
       roleText = 'MANAGER';
       color = Colors.blue;
     }
@@ -583,10 +559,14 @@ class _ManagementState extends State<Management> {
   Widget _buildStats() {
     final totalUsers = users.length;
     final adminCount = users
-        .where((u) => (u["role"] ?? "user") == "admin")
+        .where((u) => u["isAdmin"] == true || u["role"] == "admin")
         .length;
     final managerCount = users
-        .where((u) => (u["role"] ?? "user") == "manager")
+        .where(
+          (u) =>
+              (u["isManager"] == true || u["role"] == "manager") &&
+              !(u["isAdmin"] == true || u["role"] == "admin"),
+        )
         .length;
     final userCount = totalUsers - adminCount - managerCount;
 
@@ -688,10 +668,10 @@ class _ManagementState extends State<Management> {
               final int point = (u["point"] is num)
                   ? (u["point"] as num).toInt()
                   : 0;
-              final String role = u["role"] ?? "user";
-              final bool isUserAdmin = role == "admin";
-              final bool isUserManager = role == "manager";
-              final bool isUserRegular = role == "user";
+              final bool isUserAdmin =
+                  u["isAdmin"] == true || u["role"] == "admin";
+              final bool isUserManager =
+                  u["isManager"] == true || u["role"] == "manager";
               final String username = u["username"] ?? "Không có tên";
               final String email = u["email"] ?? "Không có email";
               final String phone = u["phone"] ?? "Không có SĐT";
@@ -785,7 +765,7 @@ class _ManagementState extends State<Management> {
                       ),
 
                       // Hiển thị điểm cho user thường
-                      if (isUserRegular && point > 0)
+                      if (!isUserAdmin && !isUserManager && point > 0)
                         Container(
                           margin: const EdgeInsets.only(top: 12),
                           padding: const EdgeInsets.symmetric(

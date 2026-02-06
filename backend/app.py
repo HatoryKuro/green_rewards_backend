@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 from database import users, vouchers, user_vouchers, partners, fs
 from bson.objectid import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime
 import hashlib
 import os
 from werkzeug.utils import secure_filename
@@ -11,11 +10,6 @@ from io import BytesIO
 
 app = Flask(__name__)
 CORS(app)
-
-# JWT Configuration
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-jwt = JWTManager(app)
 
 # =========================
 # UTILS
@@ -124,17 +118,6 @@ def login():
     role = user.get("role", "user")
     isAdmin = role == "admin"
     isManager = role in ["admin", "manager"]
-    
-    # Tạo JWT token
-    token_payload = {
-        "id": str(user["_id"]),
-        "username": user["username"],
-        "role": role,
-        "isAdmin": isAdmin,
-        "isManager": isManager
-    }
-    
-    access_token = create_access_token(identity=token_payload)
 
     return jsonify({
         "_id": str(user["_id"]),
@@ -144,8 +127,7 @@ def login():
         "role": role,
         "isAdmin": isAdmin,
         "isManager": isManager,
-        "point": safe_int(user.get("point", 0)),
-        "token": access_token  # THÊM TOKEN VÀO RESPONSE
+        "point": safe_int(user.get("point", 0))
     }), 200
 
 @app.route("/register", methods=["POST"])
@@ -236,7 +218,6 @@ def get_all_users():
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 @app.route("/users/<user_id>/role", methods=["PUT"])
-@jwt_required()
 def update_user_role(user_id):
     # Kiểm tra database
     if not check_database():
@@ -278,17 +259,16 @@ def update_user_role(user_id):
         
         if result.modified_count == 1:
             return jsonify({
-                "success": True,
                 "message": f"Cập nhật role thành công thành {new_role}",
                 "new_role": new_role,
                 "isAdmin": isAdmin,
                 "isManager": isManager
             }), 200
         else:
-            return jsonify({"success": False, "error": "Cập nhật thất bại hoặc không có thay đổi"}), 400
+            return jsonify({"error": "Cập nhật thất bại hoặc không có thay đổi"}), 400
             
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 @app.route("/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
@@ -308,75 +288,39 @@ def delete_user(user_id):
         
         result = users.delete_one({"_id": ObjectId(user_id)})
         if result.deleted_count == 1:
-            return jsonify({"success": True, "message": "Xóa user thành công"}), 200
+            return jsonify({"message": "Xóa user thành công"}), 200
         else:
             return jsonify({"error": "User không tồn tại"}), 404
     except Exception as e:
         return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
-@app.route("/users/<user_id>/reset-point", methods=["POST"])
-@jwt_required()
+@app.route("/users/<user_id>/reset-point", methods=["PUT"])
 def reset_user_point(user_id):
     # Kiểm tra database
     if not check_database():
         return jsonify({"error": "Database không khả dụng"}), 503
     
     try:
-        data = request.json
-        message = data.get("message", "Điểm đã được reset bởi quản trị viên")
-        
-        # Lấy thông tin user đang thực hiện reset (từ token)
-        current_user = get_jwt_identity()
-        reset_by = current_user.get('username', 'admin')
-        
         # Kiểm tra user có tồn tại không
         user = users.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return jsonify({"success": False, "error": "User không tồn tại"}), 404
+            return jsonify({"error": "User không tồn tại"}), 404
         
         # Không cho reset điểm của admin
         if user.get("role") == "admin":
-            return jsonify({"success": False, "error": "Không thể reset điểm của admin"}), 400
+            return jsonify({"error": "Không thể reset điểm của admin"}), 400
         
-        # Lấy điểm cũ để lưu vào lịch sử
-        old_point = user.get("point", 0)
-        
-        # Nếu điểm đã là 0 thì không cần reset
-        if old_point <= 0:
-            return jsonify({"success": False, "error": "Người dùng này không có điểm để reset"}), 400
-        
-        # Reset điểm về 0
         result = users.update_one(
             {"_id": ObjectId(user_id)},
             {"$set": {"point": 0}}
         )
         
-        # Tạo bản ghi lịch sử reset
-        history_entry = {
-            "type": "reset",
-            "point": old_point,  # Điểm cũ (số điểm bị reset)
-            "message": message,
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "reset_by": reset_by
-        }
-        
-        # Thêm vào lịch sử của user
-        users.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$push": {"history": history_entry}}
-        )
-        
         if result.modified_count == 1:
-            return jsonify({
-                "success": True,
-                "message": "Reset điểm thành công",
-                "old_point": old_point,
-                "reset_by": reset_by
-            }), 200
+            return jsonify({"message": "Reset điểm thành công"}), 200
         else:
-            return jsonify({"success": False, "error": "User không tồn tại"}), 404
+            return jsonify({"error": "User không tồn tại"}), 404
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 @app.route("/users/<username>", methods=["GET"])
 def get_user_by_username(username):
@@ -387,20 +331,10 @@ def get_user_by_username(username):
     try:
         user = users.find_one({"username": username})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404
-        
+            return jsonify({"error": "User không tồn tại"}), 404        
         role = user.get("role", "user")
         isAdmin = role == "admin"
         isManager = role in ["admin", "manager"]
-        
-        # Chuyển đổi ObjectId thành string trong history
-        history = user.get("history", [])
-        formatted_history = []
-        for entry in history:
-            formatted_entry = dict(entry)
-            if "_id" in formatted_entry and isinstance(formatted_entry["_id"], ObjectId):
-                formatted_entry["_id"] = str(formatted_entry["_id"])
-            formatted_history.append(formatted_entry)
         
         return jsonify({
             "_id": str(user["_id"]),
@@ -411,7 +345,7 @@ def get_user_by_username(username):
             "isAdmin": isAdmin,
             "isManager": isManager,
             "point": safe_int(user.get("point", 0)),
-            "history": formatted_history,
+            "history": user.get("history", []),
             "usedBills": user.get("usedBills", [])
         }), 200
     except Exception as e:
@@ -422,7 +356,6 @@ def get_user_by_username(username):
 # =========================
 
 @app.route("/scan/add-point", methods=["POST"])
-@jwt_required()
 def add_point_by_qr():
     # Kiểm tra database
     if not check_database():
@@ -452,12 +385,11 @@ def add_point_by_qr():
     # Cập nhật điểm và lịch sử
     new_point = user.get("point", 0) + point
     history_entry = {
-        "type": "add",
-        "point": point,
+        "date": datetime.now().isoformat(),
         "partner": partner,
-        "bill": bill_code,
-        "message": f"Tích điểm từ {partner}",
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "billCode": bill_code,
+        "point": point,
+        "type": "earn"
     }
     
     users.update_one(
@@ -470,7 +402,6 @@ def add_point_by_qr():
     )
     
     return jsonify({
-        "success": True,
         "message": "Cộng điểm thành công",
         "new_point": new_point
     }), 200
@@ -480,7 +411,6 @@ def add_point_by_qr():
 # =========================
 
 @app.route("/admin/vouchers", methods=["POST"])
-@jwt_required()
 def create_voucher():
     # Kiểm tra database
     if not check_database():
@@ -505,12 +435,11 @@ def create_voucher():
     try:
         result = vouchers.insert_one(new_voucher)
         return jsonify({
-            "success": True,
             "message": "Tạo voucher thành công",
             "voucher_id": str(result.inserted_id)
         }), 201
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi database: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 @app.route("/vouchers", methods=["GET"])
 def get_available_vouchers():
@@ -537,7 +466,6 @@ def get_available_vouchers():
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 @app.route("/users/<username>/exchange-voucher", methods=["POST"])
-@jwt_required()
 def exchange_voucher(username):
     # Kiểm tra database
     if not check_database():
@@ -571,22 +499,11 @@ def exchange_voucher(username):
     if exchanged_count >= voucher["maxPerUser"]:
         return jsonify({"error": "Đã đạt giới hạn đổi voucher này"}), 400
     
-    # Trừ điểm và ghi lịch sử
+    # Trừ điểm
     new_point = user.get("point", 0) - voucher["point"]
-    history_entry = {
-        "type": "exchange",
-        "point": -voucher["point"],
-        "partner": voucher["partner"],
-        "message": f"Đổi voucher {voucher['partner']}",
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
     users.update_one(
         {"username": username},
-        {
-            "$set": {"point": new_point},
-            "$push": {"history": history_entry}
-        }
+        {"$set": {"point": new_point}}
     )
     
     # Tạo user_voucher
@@ -602,13 +519,11 @@ def exchange_voucher(username):
     user_vouchers.insert_one(user_voucher)
     
     return jsonify({
-        "success": True,
         "message": "Đổi voucher thành công",
         "new_point": new_point
     }), 200
 
 @app.route("/users/<username>/vouchers", methods=["GET"])
-@jwt_required()
 def get_user_vouchers(username):
     # Kiểm tra database
     if not check_database():
@@ -634,7 +549,6 @@ def get_user_vouchers(username):
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 @app.route("/vouchers/<voucher_id>/use", methods=["PUT"])
-@jwt_required()
 def mark_voucher_used(voucher_id):
     # Kiểm tra database
     if not check_database():
@@ -647,14 +561,13 @@ def mark_voucher_used(voucher_id):
         )
         
         if result.modified_count == 1:
-            return jsonify({"success": True, "message": "Đánh dấu voucher đã sử dụng thành công"}), 200
+            return jsonify({"message": "Đánh dấu voucher đã sử dụng thành công"}), 200
         else:
-            return jsonify({"success": False, "error": "Voucher không tồn tại"}), 404
+            return jsonify({"error": "Voucher không tồn tại"}), 404
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 @app.route("/admin/vouchers", methods=["GET"])
-@jwt_required()
 def get_all_vouchers():
     # Kiểm tra database
     if not check_database():
@@ -702,7 +615,6 @@ def get_voucher_detail(voucher_id):
         return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 @app.route("/admin/vouchers/stats", methods=["GET"])
-@jwt_required()
 def get_voucher_stats():
     # Kiểm tra database
     if not check_database():
@@ -733,7 +645,6 @@ def get_voucher_stats():
 # =========================
 
 @app.route("/admin/upload-partner-image", methods=["POST"])
-@jwt_required()
 def upload_partner_image():
     # Kiểm tra database
     if not check_database():
@@ -774,14 +685,13 @@ def upload_partner_image():
         )
         
         return jsonify({
-            "success": True,
             "message": "Upload ảnh thành công",
             "image_id": str(image_id),
             "partner_name": partner['name']
         }), 200
         
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi upload: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi upload: {str(e)}"}), 500
 
 @app.route("/image/<image_id>", methods=["GET"])
 def get_image(image_id):
@@ -807,7 +717,6 @@ def get_image(image_id):
         return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 @app.route("/admin/image/<image_id>", methods=["DELETE"])
-@jwt_required()
 def delete_image(image_id):
     # Kiểm tra database
     if not check_database():
@@ -821,9 +730,9 @@ def delete_image(image_id):
             {"$unset": {"image_id": ""}}
         )
         
-        return jsonify({"success": True, "message": "Xóa ảnh thành công"}), 200
+        return jsonify({"message": "Xóa ảnh thành công"}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": f"Lỗi: {str(e)}"}), 500
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 # =========================
 # PARTNER ROUTES
@@ -886,7 +795,6 @@ def get_partner(partner_id):
         return jsonify({"error": "Invalid partner ID"}), 400
 
 @app.route("/admin/partners", methods=["POST"])
-@jwt_required()
 def create_partner():
     # Kiểm tra database
     if not check_database():
@@ -913,15 +821,13 @@ def create_partner():
     try:
         result = partners.insert_one(partner)
         return jsonify({
-            "success": True,
             "message": "Partner created successfully",
             "partner_id": str(result.inserted_id)
         }), 201
     except Exception as e:
-        return jsonify({"success": False, "error": f"Database error: {str(e)}"}), 500
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 @app.route("/admin/partners/<partner_id>", methods=["PUT"])
-@jwt_required()
 def update_partner(partner_id):
     # Kiểm tra database
     if not check_database():
@@ -951,15 +857,14 @@ def update_partner(partner_id):
         )
         
         if result.modified_count == 1:
-            return jsonify({"success": True, "message": "Partner updated successfully"}), 200
+            return jsonify({"message": "Partner updated successfully"}), 200
         else:
-            return jsonify({"success": True, "message": "No changes made"}), 200
+            return jsonify({"message": "No changes made"}), 200
             
     except:
-        return jsonify({"success": False, "error": "Invalid partner ID"}), 400
+        return jsonify({"error": "Invalid partner ID"}), 400
 
 @app.route("/admin/partners/<partner_id>", methods=["DELETE"])
-@jwt_required()
 def delete_partner(partner_id):
     # Kiểm tra database
     if not check_database():
@@ -982,12 +887,12 @@ def delete_partner(partner_id):
         )
         
         if result.modified_count == 1:
-            return jsonify({"success": True, "message": "Partner deleted successfully"}), 200
+            return jsonify({"message": "Partner deleted successfully"}), 200
         else:
-            return jsonify({"success": False, "error": "Failed to delete partner"}), 500
+            return jsonify({"error": "Failed to delete partner"}), 500
             
     except:
-        return jsonify({"success": False, "error": "Invalid partner ID"}), 400
+        return jsonify({"error": "Invalid partner ID"}), 400
 
 @app.route("/partners/names", methods=["GET"])
 def get_partner_names():
