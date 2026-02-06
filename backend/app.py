@@ -36,10 +36,11 @@ def check_database():
     return users is not None
 
 # =========================
-# ENSURE ADMIN (với kiểm tra database)
+# ENSURE ADMIN & MANAGER (với kiểm tra database)
 # =========================
 if check_database():
     try:
+        # Kiểm tra và tạo admin nếu chưa có
         admin = users.find_one({"username": "admin"})
         if not admin:
             users.insert_one({
@@ -49,13 +50,33 @@ if check_database():
                 "password": hash_password("admin1"),
                 "role": "admin",
                 "isAdmin": True,
+                "isManager": True,
                 "point": 0,
                 "usedBills": [],
                 "history": [],
                 "created_at": datetime.now()
             })
+            print("✓ Đã tạo tài khoản admin mặc định")
+        
+        # Kiểm tra và tạo manager nếu chưa có
+        manager = users.find_one({"username": "manager"})
+        if not manager:
+            users.insert_one({
+                "username": "manager",
+                "email": "manager@system.com",
+                "phone": "1111111111",
+                "password": hash_password("manager1"),
+                "role": "manager",
+                "isAdmin": False,
+                "isManager": True,
+                "point": 0,
+                "usedBills": [],
+                "history": [],
+                "created_at": datetime.now()
+            })
+            print("✓ Đã tạo tài khoản manager mặc định")
     except Exception as e:
-        print(f"⚠ Không thể tạo admin user: {e}")
+        print(f"⚠ Không thể tạo user mặc định: {e}")
 
 # =========================
 # HEALTH CHECK ENDPOINT
@@ -93,13 +114,19 @@ def login():
     if not user or user["password"] != hash_password(password):
         return jsonify({"error": "Sai tài khoản hoặc mật khẩu"}), 401
 
+    # Xác định role và isManager dựa trên trường role
+    role = user.get("role", "user")
+    isAdmin = role == "admin"
+    isManager = role in ["admin", "manager"]
+
     return jsonify({
         "_id": str(user["_id"]),
         "username": user["username"],
         "email": user["email"],
         "phone": user["phone"],
-        "role": user.get("role", "user"),
-        "isAdmin": user.get("isAdmin", False),
+        "role": role,
+        "isAdmin": isAdmin,
+        "isManager": isManager,
         "point": safe_int(user.get("point", 0))
     }), 200
 
@@ -129,7 +156,7 @@ def register():
     if users.find_one({"phone": data["phone"]}):
         return jsonify({"error": "Số điện thoại đã tồn tại"}), 400
     
-    # Tạo user mới
+    # Tạo user mới với role mặc định là "user"
     new_user = {
         "username": data["username"],
         "email": data["email"],
@@ -137,6 +164,7 @@ def register():
         "password": hash_password(data["password"]),
         "role": "user",
         "isAdmin": False,
+        "isManager": False,
         "point": 0,
         "usedBills": [],
         "history": [],
@@ -153,7 +181,7 @@ def register():
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
 # =========================
-# USER MANAGEMENT ROUTES
+# USER MANAGEMENT ROUTES (CẬP NHẬT PHÂN QUYỀN)
 # =========================
 
 @app.route("/users", methods=["GET"])
@@ -163,18 +191,24 @@ def get_all_users():
         return jsonify({"error": "Database không khả dụng"}), 503
     
     try:
-        users_list = users.find({"role": "user"}).sort("created_at", -1)
+        # Lấy tất cả user (bao gồm cả admin và manager)
+        users_list = users.find().sort("created_at", -1)
         
         result = []
         for user in users_list:
+            role = user.get("role", "user")
+            isAdmin = role == "admin"
+            isManager = role in ["admin", "manager"]
+            
             result.append({
                 "_id": str(user["_id"]),
                 "id": str(user["_id"]),
                 "username": user["username"],
                 "email": user["email"],
                 "phone": user["phone"],
-                "role": user.get("role", "user"),
-                "isAdmin": user.get("isAdmin", False),
+                "role": role,
+                "isAdmin": isAdmin,
+                "isManager": isManager,
                 "point": safe_int(user.get("point", 0)),
                 "created_at": user.get("created_at", datetime.now()).isoformat()
             })
@@ -183,6 +217,59 @@ def get_all_users():
     except Exception as e:
         return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
 
+@app.route("/users/<user_id>/role", methods=["PUT"])
+def update_user_role(user_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
+    try:
+        data = request.json
+        new_role = data.get("role")
+        
+        # Kiểm tra role hợp lệ
+        if not new_role or new_role not in ["user", "manager", "admin"]:
+            return jsonify({"error": "Role không hợp lệ. Chọn user, manager hoặc admin"}), 400
+        
+        # Tìm user cần cập nhật
+        user = users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        
+        current_role = user.get("role", "user")
+        
+        # Không cho phép thay đổi role của admin khác (chỉ admin có thể thay đổi)
+        if current_role == "admin" and new_role != "admin":
+            return jsonify({"error": "Không thể thay đổi role của admin"}), 400
+        
+        # Cập nhật role
+        isAdmin = new_role == "admin"
+        isManager = new_role in ["admin", "manager"]
+        
+        update_data = {
+            "role": new_role,
+            "isAdmin": isAdmin,
+            "isManager": isManager
+        }
+        
+        result = users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({
+                "message": f"Cập nhật role thành công thành {new_role}",
+                "new_role": new_role,
+                "isAdmin": isAdmin,
+                "isManager": isManager
+            }), 200
+        else:
+            return jsonify({"error": "Cập nhật thất bại hoặc không có thay đổi"}), 400
+            
+    except Exception as e:
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+
 @app.route("/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
     # Kiểm tra database
@@ -190,9 +277,13 @@ def delete_user(user_id):
         return jsonify({"error": "Database không khả dụng"}), 503
     
     try:
-        # Không cho xóa admin
+        # Tìm user cần xóa
         user = users.find_one({"_id": ObjectId(user_id)})
-        if user and user.get("isAdmin"):
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        
+        # Không cho xóa admin
+        if user.get("role") == "admin":
             return jsonify({"error": "Không thể xóa tài khoản admin"}), 400
         
         result = users.delete_one({"_id": ObjectId(user_id)})
@@ -210,6 +301,15 @@ def reset_user_point(user_id):
         return jsonify({"error": "Database không khả dụng"}), 503
     
     try:
+        # Kiểm tra user có tồn tại không
+        user = users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        
+        # Không cho reset điểm của admin
+        if user.get("role") == "admin":
+            return jsonify({"error": "Không thể reset điểm của admin"}), 400
+        
         result = users.update_one(
             {"_id": ObjectId(user_id)},
             {"$set": {"point": 0}}
@@ -231,15 +331,19 @@ def get_user_by_username(username):
     try:
         user = users.find_one({"username": username})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return jsonify({"error": "User không tồn tại"}), 404        
+        role = user.get("role", "user")
+        isAdmin = role == "admin"
+        isManager = role in ["admin", "manager"]
         
         return jsonify({
             "_id": str(user["_id"]),
             "username": user["username"],
             "email": user["email"],
             "phone": user["phone"],
-            "role": user.get("role", "user"),
-            "isAdmin": user.get("isAdmin", False),
+            "role": role,
+            "isAdmin": isAdmin,
+            "isManager": isManager,
             "point": safe_int(user.get("point", 0)),
             "history": user.get("history", []),
             "usedBills": user.get("usedBills", [])
@@ -631,7 +735,7 @@ def delete_image(image_id):
         return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 # =========================
-# PARTNER ROUTES (đơn giản hóa)
+# PARTNER ROUTES
 # =========================
 
 @app.route("/partners", methods=["GET"])

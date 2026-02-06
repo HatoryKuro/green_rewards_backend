@@ -52,11 +52,23 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
+      final userId = res["_id"] ?? "";
       final role = res["role"];
       final username = res["username"];
+      final email = res["email"] ?? "";
+      final phone = res["phone"] ?? "";
+      final isAdmin = res["isAdmin"] ?? false;
+      final point = res["point"] ?? 0;
 
+      // 🔥 LƯU ĐẦY ĐỦ THÔNG TIN NGƯỜI DÙNG VÀO SHAREDPREFERENCES
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_id', userId);
       await prefs.setString('username', username);
+      await prefs.setString('email', email);
+      await prefs.setString('phone', phone);
+      await prefs.setString('role', role);
+      await prefs.setBool('is_admin', isAdmin);
+      await prefs.setInt('point', point);
 
       // 🔥 FIX TIẾP (sau await)
       if (!mounted) return;

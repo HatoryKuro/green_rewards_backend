@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/api_service.dart';
+import '../pages/user_home.dart';
 
 class Register extends StatefulWidget {
   const Register({super.key});
@@ -47,10 +49,51 @@ class _RegisterState extends State<Register> {
       setState(() => loading = false);
 
       if (err == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Tạo tài khoản thành công")),
-        );
-        Navigator.pop(context);
+        // 🔥 ĐĂNG KÝ THÀNH CÔNG - TỰ ĐỘNG ĐĂNG NHẬP
+        try {
+          final loginRes = await ApiService.login(
+            userCtrl.text.trim(),
+            passCtrl.text.trim(),
+          );
+
+          if (loginRes == null) {
+            setState(() {
+              error = "Đăng ký thành công nhưng đăng nhập thất bại";
+            });
+            return;
+          }
+
+          // 🔥 LƯU THÔNG TIN NGƯỜI DÙNG VÀO SHAREDPREFERENCES
+          final userId = loginRes["_id"] ?? "";
+          final role = loginRes["role"] ?? "user";
+          final username = loginRes["username"];
+          final email = loginRes["email"] ?? "";
+          final phone = loginRes["phone"] ?? "";
+          final isAdmin = loginRes["isAdmin"] ?? false;
+          final point = loginRes["point"] ?? 0;
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_id', userId);
+          await prefs.setString('username', username);
+          await prefs.setString('email', email);
+          await prefs.setString('phone', phone);
+          await prefs.setString('role', role);
+          await prefs.setBool('is_admin', isAdmin);
+          await prefs.setInt('point', point);
+
+          if (!mounted) return;
+
+          // 🔥 CHUYỂN ĐẾN TRANG USER HOME
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const UserHome()),
+            (_) => false,
+          );
+        } catch (loginError) {
+          setState(() {
+            error = "Đăng ký thành công nhưng đăng nhập thất bại: $loginError";
+          });
+        }
       } else {
         setState(() => error = err);
       }
@@ -66,7 +109,11 @@ class _RegisterState extends State<Register> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Tạo tài khoản user")),
+      appBar: AppBar(
+        title: const Text("Tạo tài khoản user"),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -80,12 +127,28 @@ class _RegisterState extends State<Register> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Đăng ký tài khoản mới',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Tham gia cùng GreenRewards 🌱",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
                   TextField(
                     controller: userCtrl,
                     decoration: const InputDecoration(
                       labelText: "Tên đăng nhập",
                       prefixIcon: Icon(Icons.person),
                       border: OutlineInputBorder(),
+                      hintText: "Nhập tên đăng nhập",
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -95,7 +158,9 @@ class _RegisterState extends State<Register> {
                       labelText: "Email",
                       prefixIcon: Icon(Icons.email),
                       border: OutlineInputBorder(),
+                      hintText: "example@email.com",
                     ),
+                    keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -104,7 +169,9 @@ class _RegisterState extends State<Register> {
                       labelText: "Số điện thoại",
                       prefixIcon: Icon(Icons.phone),
                       border: OutlineInputBorder(),
+                      hintText: "0123456789",
                     ),
+                    keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -114,6 +181,7 @@ class _RegisterState extends State<Register> {
                       labelText: "Mật khẩu",
                       prefixIcon: Icon(Icons.lock),
                       border: OutlineInputBorder(),
+                      hintText: "Nhập mật khẩu",
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -139,18 +207,49 @@ class _RegisterState extends State<Register> {
                             )
                           : const Text(
                               "ĐĂNG KÝ",
-                              style: TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                     ),
                   ),
                   if (error.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      error,
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red[100]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[700]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              error,
+                              style: TextStyle(
+                                color: Colors.red[700],
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: const Text(
+                      '← Quay lại đăng nhập',
+                      style: TextStyle(color: Colors.green),
+                    ),
+                  ),
                 ],
               ),
             ),

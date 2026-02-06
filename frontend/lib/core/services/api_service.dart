@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl = "https://green-rewards-backend.onrender.com";
@@ -102,7 +103,7 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
       );
 
-      return res.statusCode == 200 || res.statusCode == 204;
+      return res.statusCode == 200;
     } catch (e) {
       return false;
     }
@@ -119,6 +120,31 @@ class ApiService {
       return res.statusCode == 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  // ================== UPDATE USER ROLE ==================
+  static Future<Map<String, dynamic>> updateUserRole({
+    required String userId,
+    required String newRole,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse("$baseUrl/users/$userId/role"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"role": newRole}),
+      );
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        final data = jsonDecode(res.body);
+        throw Exception(data["error"] ?? "Cập nhật role thất bại");
+      }
+    } catch (e) {
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -575,5 +601,21 @@ class ApiService {
     throw Exception(
       data['error'] ?? "API request failed with status ${response.statusCode}",
     );
+  }
+
+  // ================== GET CURRENT USER INFO ==================
+  static Future<Map<String, dynamic>> getCurrentUserInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('username') ?? '';
+
+      if (username.isEmpty) {
+        throw Exception("Chưa đăng nhập");
+      }
+
+      return await getUserByUsername(username);
+    } catch (e) {
+      throw Exception("Không thể lấy thông tin user: ${e.toString()}");
+    }
   }
 }

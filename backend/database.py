@@ -32,15 +32,47 @@ if db is not None:  # ĐÃ SỬA: thay if db: thành if db is not None:
     
     # Tạo index để tối ưu truy vấn
     try:
+        # Index cho users
+        users.create_index([("username", 1)], unique=True)
+        users.create_index([("email", 1)], unique=True)
+        users.create_index([("phone", 1)], unique=True)
+        users.create_index([("role", 1)])
+        users.create_index([("isAdmin", 1)])
+        users.create_index([("isManager", 1)])
+        
+        # Index cho partners
         partners.create_index([("name", 1)], unique=True)
         partners.create_index([("status", 1)])
+        
+        # Index cho vouchers
         vouchers.create_index([("expired", 1)])
         vouchers.create_index([("status", 1)])
+        vouchers.create_index([("partner", 1)])
+        
+        # Index cho user_vouchers
         user_vouchers.create_index([("username", 1)])
         user_vouchers.create_index([("voucher_id", 1)])
+        user_vouchers.create_index([("status", 1)])
+        
         print("✓ Đã tạo index")
+        
+        # Cập nhật tất cả user hiện có để thêm trường isManager nếu chưa có
+        print("Đang cập nhật trường isManager cho users hiện có...")
+        users_without_manager = users.find({"isManager": {"$exists": False}})
+        count = 0
+        for user in users_without_manager:
+            role = user.get("role", "user")
+            isManager = role in ["admin", "manager"]
+            users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"isManager": isManager}}
+            )
+            count += 1
+        if count > 0:
+            print(f"✓ Đã cập nhật {count} users với trường isManager")
+            
     except Exception as e:
-        print(f"⚠ Lỗi tạo index: {e}")
+        print(f"⚠ Lỗi tạo index hoặc cập nhật users: {e}")
 else:
     # Tạo các biến None để tránh lỗi import
     users = vouchers = user_vouchers = partners = fs = None

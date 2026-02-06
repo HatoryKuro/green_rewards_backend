@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:green_rewards/features/admin/partner_create.dart';
+import 'package:green_rewards/features/other/partner_list.dart';
 
 import '../auth/login.dart';
 import '../../features/admin/voucher_create.dart';
@@ -150,7 +152,7 @@ class AdminHome extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const ControllVoucher(),
+                            builder: (_) => const PartnerList(),
                           ),
                         );
                       },
