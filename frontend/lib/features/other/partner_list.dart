@@ -38,9 +38,44 @@ class _PartnerListState extends State<PartnerList> {
       });
     } catch (e) {
       setState(() {
-        errorMessage = 'Không thể tải danh sách đối tác';
+        errorMessage = 'Không thể tải danh sách đối tác: $e';
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _deletePartner(String partnerId, String partnerName) async {
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc chắn muốn xóa đối tác "$partnerName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ApiService.deletePartner(partnerId);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Xóa đối tác thành công')));
+        _loadPartners(); // Refresh list
+      } catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi khi xóa: $e')));
+      }
     }
   }
 
@@ -54,9 +89,9 @@ class _PartnerListState extends State<PartnerList> {
   }
 
   Widget _buildPartnerImage(Partner partner) {
-    final imageUrl = partner.getImageUrl(ApiService.baseUrl);
+    final imageUrl = partner.getImageUrl();
 
-    if (imageUrl != null && imageUrl.isNotEmpty) {
+    if (imageUrl.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.network(
@@ -162,10 +197,20 @@ class _PartnerListState extends State<PartnerList> {
                   ),
               ],
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.location_on, color: Colors.green),
-              onPressed: () => _openMaps(partner.name),
-              tooltip: 'Xem trên bản đồ',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.location_on, color: Colors.green),
+                  onPressed: () => _openMaps(partner.name),
+                  tooltip: 'Xem trên bản đồ',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deletePartner(partner.id, partner.name),
+                  tooltip: 'Xóa đối tác',
+                ),
+              ],
             ),
           ),
         );

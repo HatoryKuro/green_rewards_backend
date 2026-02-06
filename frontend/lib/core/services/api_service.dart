@@ -4,6 +4,24 @@ import 'package:http/http.dart' as http;
 class ApiService {
   static const String baseUrl = "https://green-rewards-backend.onrender.com";
 
+  // ================== HEALTH CHECK ==================
+  static Future<Map<String, dynamic>> healthCheck() async {
+    try {
+      final res = await http.get(
+        Uri.parse("$baseUrl/health"),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      } else {
+        throw Exception("Server health check failed");
+      }
+    } catch (e) {
+      throw Exception("Lỗi kết nối đến server: ${e.toString()}");
+    }
+  }
+
   // ================== LOGIN ==================
   static Future<Map<String, dynamic>?> login(
     String username,
@@ -18,10 +36,12 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return null;
     } catch (e) {
-      return null;
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -64,10 +84,12 @@ class ApiService {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data is List) return data;
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return [];
     } catch (e) {
-      return [];
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -121,6 +143,8 @@ class ApiService {
 
     if (res.statusCode == 200) {
       return data;
+    } else if (res.statusCode == 503) {
+      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
     }
 
     // Nếu lỗi (ví dụ: bill already used), quăng lỗi ra để Flutter nhận diện
@@ -136,6 +160,8 @@ class ApiService {
 
     if (res.statusCode == 404) {
       throw Exception('Không tìm thấy thông tin user này');
+    } else if (res.statusCode == 503) {
+      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
     }
 
     if (res.statusCode != 200) {
@@ -175,6 +201,8 @@ class ApiService {
 
       if (res.statusCode == 201) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         final error = jsonDecode(res.body);
         throw Exception(error['error'] ?? "Tạo voucher thất bại");
@@ -194,11 +222,12 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return [];
     } catch (e) {
-      print('Error getting available vouchers: $e');
-      return [];
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -218,6 +247,8 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return data;
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         throw Exception(data['error'] ?? "Đổi voucher thất bại");
       }
@@ -236,6 +267,8 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         final error = jsonDecode(res.body);
         throw Exception(error['error'] ?? "Không thể lấy voucher");
@@ -269,24 +302,27 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return [];
     } catch (e) {
-      print('Error getting all vouchers: $e');
-      return [];
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
-  // 7. Lấy chi tiết voucher
+  // 7. Lấy chi tiết voucher - ĐÃ SỬA endpoint
   static Future<Map<String, dynamic>> getVoucherDetail(String voucherId) async {
     try {
       final res = await http.get(
-        Uri.parse("$baseUrl/vouchers/$voucherId"),
+        Uri.parse("$baseUrl/voucher/$voucherId"),
         headers: {"Content-Type": "application/json"},
       );
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         final error = jsonDecode(res.body);
         throw Exception(error['error'] ?? "Không tìm thấy voucher");
@@ -306,11 +342,12 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return {};
     } catch (e) {
-      print('Error getting voucher stats: $e');
-      return {};
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -326,11 +363,12 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return [];
     } catch (e) {
-      print('Error getting partners: $e');
-      return [];
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
@@ -344,17 +382,16 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return [];
     } catch (e) {
-      print('Error getting partner names: $e');
-      return [];
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
-  // api_service.dart - Sửa phần Partner API
-
-  // 3. Tạo partner mới (Admin) - ĐÃ SỬA: bỏ priceRange và segment
+  // 3. Tạo partner mới (Admin)
   static Future<Map<String, dynamic>> createPartner({
     required String name,
     required String type,
@@ -375,6 +412,8 @@ class ApiService {
 
       if (res.statusCode == 201) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         final error = jsonDecode(res.body);
         throw Exception(error['error'] ?? "Tạo partner thất bại");
@@ -384,7 +423,7 @@ class ApiService {
     }
   }
 
-  // 4. Cập nhật partner (Admin) - ĐÃ SỬA: bỏ priceRange và segment
+  // 4. Cập nhật partner (Admin)
   static Future<bool> updatePartner({
     required String partnerId,
     required String name,
@@ -434,6 +473,8 @@ class ApiService {
 
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         final error = jsonDecode(res.body);
         throw Exception(error['error'] ?? "Không tìm thấy partner");
@@ -448,7 +489,7 @@ class ApiService {
   // 1. Upload ảnh cho partner
   static Future<Map<String, dynamic>> uploadPartnerImage({
     required String partnerId,
-    required String imagePath, // Path to local image file
+    required String imagePath,
   }) async {
     try {
       var request = http.MultipartRequest(
@@ -456,10 +497,8 @@ class ApiService {
         Uri.parse('$baseUrl/admin/upload-partner-image'),
       );
 
-      // Add partner_id
       request.fields['partner_id'] = partnerId;
 
-      // Add image file
       var file = await http.MultipartFile.fromPath(
         'image',
         imagePath,
@@ -473,6 +512,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         return data;
+      } else if (response.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
         throw Exception(data['error'] ?? "Upload ảnh thất bại");
       }
@@ -484,7 +525,7 @@ class ApiService {
   // 2. Lấy ảnh URL từ image_id
   static String getImageUrl(String? imageId) {
     if (imageId == null || imageId.isEmpty || imageId == 'null') {
-      return ''; // No image
+      return '';
     }
     return '$baseUrl/image/$imageId';
   }

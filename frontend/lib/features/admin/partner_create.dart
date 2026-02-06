@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/services/api_service.dart';
-import '../../core/models/partner.dart';
 
 class PartnerCreate extends StatefulWidget {
   const PartnerCreate({super.key});
@@ -45,29 +44,45 @@ class _PartnerCreateState extends State<PartnerCreate> {
     setState(() => isLoading = true);
 
     try {
-      // 1. Tạo partner trước
+      // 1. Tạo partner trước (không có image_id ban đầu)
       final result = await ApiService.createPartner(
         name: nameController.text,
         type: selectedType,
         description: descriptionController.text,
       );
 
-      final partnerId = result['partner_id'];
+      // 2. Lấy partnerId từ kết quả trả về
+      // API trả về { "_id": "...", "name": "...", ... }
+      final partnerId = result['_id']?.toString() ?? result['id']?.toString();
 
-      // 2. Nếu có ảnh, upload ảnh
-      if (_selectedImage != null && partnerId != null) {
+      if (partnerId == null) {
+        throw Exception('Không lấy được ID của partner từ server');
+      }
+
+      // 3. Nếu có ảnh, upload ảnh
+      if (_selectedImage != null) {
         try {
           await ApiService.uploadPartnerImage(
             partnerId: partnerId,
             imagePath: _selectedImage!.path,
           );
+
+          // Sau khi upload ảnh thành công, có thể cập nhật partner với imageId
+          // Nhưng API hiện tại của bạn chưa hỗ trợ cập nhật image_id
         } catch (e) {
-          // Vẫn thành công nếu partner đã tạo
+          // Vẫn thành công nếu partner đã tạo, chỉ báo lỗi upload ảnh
           print('Lỗi upload ảnh: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Tạo đối tác thành công nhưng upload ảnh thất bại: $e',
+              ),
+            ),
+          );
         }
       }
 
-      // 3. Thông báo thành công
+      // 4. Thông báo thành công
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -78,7 +93,7 @@ class _PartnerCreateState extends State<PartnerCreate> {
 
         // Quay lại sau 1 giây
         Future.delayed(const Duration(seconds: 1), () {
-          Navigator.pop(context);
+          if (mounted) Navigator.pop(context);
         });
       }
     } catch (e) {

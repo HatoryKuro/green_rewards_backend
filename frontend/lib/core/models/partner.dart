@@ -1,3 +1,5 @@
+import 'package:green_rewards/core/services/api_service.dart';
+
 class Partner {
   final String id;
   final String name;
@@ -17,7 +19,7 @@ class Partner {
 
   factory Partner.fromJson(Map<String, dynamic> json) {
     return Partner(
-      id: json['id']?.toString() ?? '',
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       name: json['name'] ?? '',
       type: json['type'] ?? '',
       description: json['description'] ?? '',
@@ -28,6 +30,7 @@ class Partner {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'name': name,
       'type': type,
       'description': description,
@@ -36,11 +39,8 @@ class Partner {
     };
   }
 
-  // Lấy URL ảnh từ imageId
-  String? getImageUrl(String baseUrl) {
-    if (imageId != null && imageId!.isNotEmpty) {
-      return '$baseUrl/image/$imageId';
-    }
-    return null;
+  // Helper method để lấy URL ảnh
+  String getImageUrl() {
+    return ApiService.getImageUrl(imageId);
   }
 }
