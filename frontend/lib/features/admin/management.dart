@@ -51,12 +51,6 @@ class _ManagementState extends State<Management> {
 
       if (!mounted) return;
 
-      // Kiểm tra dữ liệu trả về
-      print('API trả về ${userList.length} users');
-      if (userList.isNotEmpty) {
-        print('User đầu tiên: ${userList[0]}');
-      }
-
       setState(() {
         users = userList;
         isLoading = false;
@@ -360,69 +354,7 @@ class _ManagementState extends State<Management> {
   }
 
   /// =======================
-  /// HIỂN THỊ BADGE THEO ROLE
-  /// =======================
-  Widget _buildRoleBadge(Map user) {
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
-    final bool isUserManager =
-        user["isManager"] == true || user["role"] == "manager";
-
-    if (isUserAdmin) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.red[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red[200]!),
-        ),
-        child: const Text(
-          'ADMIN',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: Colors.red,
-          ),
-        ),
-      );
-    } else if (isUserManager) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.blue[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.blue[200]!),
-        ),
-        child: const Text(
-          'QUẢN LÝ',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: Colors.blue,
-          ),
-        ),
-      );
-    } else {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.green[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green[200]!),
-        ),
-        child: const Text(
-          'USER',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
-          ),
-        ),
-      );
-    }
-  }
-
-  /// =======================
-  /// HIỂN THỊ CÁC NÚT CHỨC NĂNG THEO QUYỀN
+  /// HIỂN THỊ CÁC NÚT CHỨC NĂNG
   /// =======================
   Widget _buildActionButtons(Map user) {
     final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
@@ -433,62 +365,135 @@ class _ManagementState extends State<Management> {
         : 0;
     final String username = user["username"] ?? "";
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Nút xem lịch sử (cho tất cả user không phải admin)
-        if (!isUserAdmin)
-          IconButton(
-            tooltip: 'Xem lịch sử điểm',
-            icon: const Icon(Icons.history, color: Colors.green),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HistoryPoint(username: username),
-                ),
-              );
-            },
-          ),
+    List<Widget> buttons = [];
 
-        // Nút reset điểm (chỉ cho user thường, không dành cho admin/manager)
-        if (!isUserAdmin && !isUserManager && point > 0)
-          IconButton(
-            tooltip: 'Reset điểm',
-            icon: Icon(
-              Icons.refresh,
-              color: point > 0 ? Colors.orange : Colors.grey,
-            ),
-            onPressed: point > 0 ? () => confirmResetPoint(user) : null,
+    // Nút xem lịch sử (cho tất cả user không phải admin)
+    if (!isUserAdmin) {
+      buttons.add(
+        ElevatedButton.icon(
+          icon: const Icon(Icons.history, size: 16),
+          label: const Text('Lịch sử'),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => HistoryPoint(username: username),
+              ),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(100, 36),
           ),
+        ),
+      );
+    }
 
-        // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager)
-        if (isCurrentAdmin && !isUserAdmin)
-          IconButton(
-            tooltip: user["role"] == "user"
-                ? 'Nâng lên quản lý'
-                : 'Hạ xuống user',
-            icon: Icon(
-              user["role"] == "user"
-                  ? Icons.arrow_upward
-                  : Icons.arrow_downward,
-              color: Colors.blue,
-            ),
-            onPressed: () => confirmChangeRole(user),
+    // Nút reset điểm (chỉ cho user thường, không dành cho admin/manager)
+    if (!isUserAdmin && !isUserManager && point > 0) {
+      buttons.add(const SizedBox(width: 8));
+      buttons.add(
+        ElevatedButton.icon(
+          icon: const Icon(Icons.refresh, size: 16),
+          label: const Text('Reset điểm'),
+          onPressed: () => confirmResetPoint(user),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(100, 36),
           ),
+        ),
+      );
+    }
 
-        // Nút xoá user (Admin có thể xoá manager và user, Manager chỉ có thể xoá user)
-        if ((isCurrentAdmin && !isUserAdmin) ||
-            (isCurrentManager &&
-                !isCurrentAdmin &&
-                !isUserAdmin &&
-                !isUserManager))
-          IconButton(
-            tooltip: 'Xoá user',
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: () => confirmDeleteUser(user),
+    // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager)
+    if (isCurrentAdmin && !isUserAdmin) {
+      buttons.add(const SizedBox(width: 8));
+      buttons.add(
+        ElevatedButton.icon(
+          icon: Icon(
+            user["role"] == "user" ? Icons.arrow_upward : Icons.arrow_downward,
+            size: 16,
           ),
-      ],
+          label: Text(user["role"] == "user" ? 'Nâng quyền' : 'Hạ quyền'),
+          onPressed: () => confirmChangeRole(user),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(100, 36),
+          ),
+        ),
+      );
+    }
+
+    // Nút xoá user (Admin có thể xoá manager và user, Manager chỉ có thể xoá user)
+    if ((isCurrentAdmin && !isUserAdmin) ||
+        (isCurrentManager &&
+            !isCurrentAdmin &&
+            !isUserAdmin &&
+            !isUserManager)) {
+      buttons.add(const SizedBox(width: 8));
+      buttons.add(
+        ElevatedButton.icon(
+          icon: const Icon(Icons.delete_outline, size: 16),
+          label: const Text('Xoá'),
+          onPressed: () => confirmDeleteUser(user),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(100, 36),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: buttons,
+      ),
+    );
+  }
+
+  /// =======================
+  /// HIỂN THỊ BADGE THEO ROLE
+  /// =======================
+  Widget _buildRoleBadge(Map user) {
+    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    final bool isUserManager =
+        user["isManager"] == true || user["role"] == "manager";
+
+    String roleText = 'USER';
+    Color color = Colors.green;
+    Color bgColor = Colors.green[50]!;
+
+    if (isUserAdmin) {
+      roleText = 'ADMIN';
+      color = Colors.red;
+      bgColor = Colors.red[50]!;
+    } else if (isUserManager) {
+      roleText = 'QUẢN LÝ';
+      color = Colors.blue;
+      bgColor = Colors.blue[50]!;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        roleText,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -600,72 +605,92 @@ class _ManagementState extends State<Management> {
 
     return Container(
       padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.all(12),
+      margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Tổng số người dùng',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              Text(
-                '$totalUsers người',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
-              ),
-            ],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+        ],
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'TỔNG QUAN NGƯỜI DÙNG',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    color: Colors.red,
-                    margin: const EdgeInsets.only(right: 4),
-                  ),
-                  Text('Admin: $adminCount'),
-                ],
+              _buildStatItem(
+                'Tổng số',
+                '$totalUsers',
+                Icons.people,
+                Colors.green,
               ),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    color: Colors.blue,
-                    margin: const EdgeInsets.only(right: 4),
-                  ),
-                  Text('Quản lý: $managerCount'),
-                ],
+              _buildStatItem(
+                'Admin',
+                '$adminCount',
+                Icons.admin_panel_settings,
+                Colors.red,
               ),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    color: Colors.green,
-                    margin: const EdgeInsets.only(right: 4),
-                  ),
-                  Text('User: $userCount'),
-                ],
+              _buildStatItem(
+                'Quản lý',
+                '$managerCount',
+                Icons.supervisor_account,
+                Colors.blue,
+              ),
+              _buildStatItem(
+                'Người dùng',
+                '$userCount',
+                Icons.person,
+                Colors.orange,
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
     );
   }
 
@@ -681,7 +706,7 @@ class _ManagementState extends State<Management> {
         // Danh sách user
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             itemCount: users.length,
             itemBuilder: (_, i) {
               final u = users[i];
@@ -696,76 +721,138 @@ class _ManagementState extends State<Management> {
               final String email = u["email"] ?? "Không có email";
               final String phone = u["phone"] ?? "Không có SĐT";
 
+              Color cardColor;
+              if (isUserAdmin) {
+                cardColor = Colors.red.shade50;
+              } else if (isUserManager) {
+                cardColor = Colors.blue.shade50;
+              } else {
+                cardColor = Colors.white;
+              }
+
               return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 16),
+                elevation: 3,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: ListTile(
-                  onTap: isUserAdmin
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => HistoryPoint(username: username),
-                            ),
-                          );
-                        },
-                  leading: CircleAvatar(
-                    backgroundColor: isUserAdmin
-                        ? Colors.red.shade100
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isUserAdmin
+                        ? Colors.red.shade200
                         : isUserManager
-                        ? Colors.blue.shade100
-                        : Colors.green.shade100,
-                    child: Icon(
-                      isUserAdmin
-                          ? Icons.admin_panel_settings
-                          : isUserManager
-                          ? Icons.supervisor_account
-                          : Icons.person,
-                      color: isUserAdmin
-                          ? Colors.red.shade800
-                          : isUserManager
-                          ? Colors.blue.shade800
-                          : Colors.green.shade800,
-                      size: 24,
-                    ),
+                        ? Colors.blue.shade200
+                        : Colors.grey.shade200,
+                    width: 1,
                   ),
-                  title: Text(
-                    username,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isUserAdmin
-                          ? Colors.red.shade800
-                          : isUserManager
-                          ? Colors.blue.shade800
-                          : Colors.black,
-                    ),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Email: $email'),
-                        Text('SĐT: $phone'),
-                        if (!isUserAdmin && !isUserManager)
-                          Text(
-                            'Điểm: $point',
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
+                ),
+                color: cardColor,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: isUserAdmin
+                                ? Colors.red.shade100
+                                : isUserManager
+                                ? Colors.blue.shade100
+                                : Colors.green.shade100,
+                            radius: 24,
+                            child: Icon(
+                              isUserAdmin
+                                  ? Icons.admin_panel_settings
+                                  : isUserManager
+                                  ? Icons.supervisor_account
+                                  : Icons.person,
+                              color: isUserAdmin
+                                  ? Colors.red.shade800
+                                  : isUserManager
+                                  ? Colors.blue.shade800
+                                  : Colors.green.shade800,
+                              size: 24,
                             ),
                           ),
-                        const SizedBox(height: 4),
-                        _buildRoleBadge(u),
-                      ],
-                    ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      username,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        color: isUserAdmin
+                                            ? Colors.red.shade800
+                                            : isUserManager
+                                            ? Colors.blue.shade800
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildRoleBadge(u),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  email,
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  'SĐT: $phone',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!isUserAdmin && !isUserManager)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.star,
+                                  color: Colors.green.shade700,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Điểm: $point',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      _buildActionButtons(u),
+                    ],
                   ),
-                  trailing: _buildActionButtons(u),
                 ),
               );
             },
@@ -778,11 +865,12 @@ class _ManagementState extends State<Management> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F5E9),
+      backgroundColor: const Color(0xFFF5F9F5),
       appBar: AppBar(
         backgroundColor: Colors.green,
         title: const Text('Quản lý người dùng'),
         centerTitle: true,
+        elevation: 0,
       ),
       body: isLoading
           ? _buildLoading()
@@ -794,8 +882,9 @@ class _ManagementState extends State<Management> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.green,
         onPressed: reload,
-        tooltip: 'Tải lại',
+        tooltip: 'Tải lại danh sách',
         child: const Icon(Icons.refresh),
+        elevation: 4,
       ),
     );
   }
