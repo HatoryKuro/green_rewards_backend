@@ -1,9 +1,9 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 from database import users, vouchers, user_vouchers, partners, fs
 from bson.objectid import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import os
 from werkzeug.utils import secure_filename
@@ -14,6 +14,7 @@ CORS(app)
 
 # JWT Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 jwt = JWTManager(app)
 
 # =========================
@@ -123,6 +124,17 @@ def login():
     role = user.get("role", "user")
     isAdmin = role == "admin"
     isManager = role in ["admin", "manager"]
+    
+    # Tạo JWT token
+    token_payload = {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "role": role,
+        "isAdmin": isAdmin,
+        "isManager": isManager
+    }
+    
+    access_token = create_access_token(identity=token_payload)
 
     return jsonify({
         "_id": str(user["_id"]),
@@ -132,7 +144,8 @@ def login():
         "role": role,
         "isAdmin": isAdmin,
         "isManager": isManager,
-        "point": safe_int(user.get("point", 0))
+        "point": safe_int(user.get("point", 0)),
+        "token": access_token  # THÊM TOKEN VÀO RESPONSE
     }), 200
 
 @app.route("/register", methods=["POST"])

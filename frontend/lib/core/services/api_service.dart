@@ -39,7 +39,7 @@ class ApiService {
   }
 
   // ================== LOGIN ==================
-  static Future<Map<String, dynamic>?> login(
+  static Future<Map<String, dynamic>> login(
     String username,
     String password,
   ) async {
@@ -50,26 +50,31 @@ class ApiService {
         body: jsonEncode({"username": username, "password": password}),
       );
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
+      final data = jsonDecode(res.body);
 
-        // Lưu token nếu có
+      if (res.statusCode == 200) {
+        // Lưu thông tin user và token
         final prefs = await SharedPreferences.getInstance();
-        prefs.setString('username', data['username']);
-        prefs.setString('token', data.get('token', ''));
+        await prefs.setString('username', data['username']);
+        await prefs.setString('token', data['token'] ?? '');
+        await prefs.setString('userId', data['_id'] ?? '');
+        await prefs.setString('role', data['role'] ?? 'user');
+        await prefs.setBool('isAdmin', data['isAdmin'] ?? false);
+        await prefs.setBool('isManager', data['isManager'] ?? false);
 
         return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        throw Exception(data["error"] ?? "Đăng nhập thất bại");
       }
-      return null;
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
     }
   }
 
   // ================== REGISTER ==================
-  static Future<String?> register({
+  static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
     required String phone,
@@ -87,30 +92,36 @@ class ApiService {
         }),
       );
 
-      if (res.statusCode == 200) return null;
-
       final data = jsonDecode(res.body);
-      return data["error"] ?? "Register failed";
+
+      if (res.statusCode == 200) {
+        return {"success": true, "message": "Đăng ký thành công"};
+      } else {
+        throw Exception(data["error"] ?? "Đăng ký thất bại");
+      }
     } catch (e) {
-      return "Lỗi kết nối Server";
+      throw Exception("Lỗi kết nối Server: ${e.toString()}");
     }
   }
 
   // ================== GET USERS (Dùng cho Management) ==================
   static Future<List<dynamic>> getUsers() async {
     try {
-      final res = await http.get(
-        Uri.parse("$baseUrl/users"),
-        headers: {"Content-Type": "application/json"},
-      );
+      final headers = await _getHeaders();
+      final res = await http.get(Uri.parse("$baseUrl/users"), headers: headers);
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data is List) return data;
+        return [];
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        final errorData = jsonDecode(res.body);
+        throw Exception(
+          errorData["error"] ?? "Không thể lấy danh sách người dùng",
+        );
       }
-      return [];
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
     }
@@ -125,13 +136,14 @@ class ApiService {
         headers: headers,
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }
   }
 
-  // ================== RESET POINT (CẬP NHẬT VỚI MESSAGE) ==================
+  // ================== RESET POINT ==================
   static Future<bool> resetPoint(
     String userId, {
     String message = "Điểm đã được reset bởi quản trị viên",
@@ -185,55 +197,55 @@ class ApiService {
     required String billCode,
     required int point,
   }) async {
-    final headers = await _getHeaders();
-    final res = await http.post(
-      Uri.parse("$baseUrl/scan/add-point"),
-      headers: headers,
-      body: jsonEncode({
-        "username": username,
-        "partner": partner,
-        "billCode": billCode,
-        "point": point,
-      }),
-    );
+    try {
+      final headers = await _getHeaders();
+      final res = await http.post(
+        Uri.parse("$baseUrl/scan/add-point"),
+        headers: headers,
+        body: jsonEncode({
+          "username": username,
+          "partner": partner,
+          "billCode": billCode,
+          "point": point,
+        }),
+      );
 
-    final data = jsonDecode(res.body);
+      final data = jsonDecode(res.body);
 
-    if (res.statusCode == 200 && data["success"] == true) {
-      return data;
-    } else if (res.statusCode == 503) {
-      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      if (res.statusCode == 200 && data["success"] == true) {
+        return data;
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        throw Exception(data["error"] ?? "Cộng điểm thất bại");
+      }
+    } catch (e) {
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
-
-    // Nếu lỗi (ví dụ: bill already used), quăng lỗi ra để Flutter nhận diện
-    throw data["error"] ?? "Cộng điểm thất bại";
   }
 
-  // ================== GET USER BY USERNAME (Dùng cho History) ==================
+  // ================== GET USER BY USERNAME ==================
   static Future<Map<String, dynamic>> getUserByUsername(String username) async {
-    final res = await http.get(
-      Uri.parse('$baseUrl/users/$username'),
-      headers: {'Content-Type': 'application/json'},
-    );
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/users/$username'),
+        headers: {'Content-Type': 'application/json'},
+      );
 
-    if (res.statusCode == 404) {
-      throw Exception('Không tìm thấy thông tin user này');
-    } else if (res.statusCode == 503) {
-      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 200) {
+        return data;
+      } else if (res.statusCode == 404) {
+        throw Exception('Không tìm thấy thông tin user này');
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        throw Exception(data["error"] ?? 'Lỗi hệ thống: ${res.statusCode}');
+      }
+    } catch (e) {
+      throw Exception("Lỗi kết nối: ${e.toString()}");
     }
-
-    if (res.statusCode != 200) {
-      throw Exception('Lỗi hệ thống: ${res.statusCode}');
-    }
-
-    final data = jsonDecode(res.body);
-
-    // Đảm bảo history luôn có
-    if (data['history'] == null || data['history'] is! List) {
-      data['history'] = [];
-    }
-
-    return data;
   }
 
   // ================== VOUCHER API ==================
@@ -318,7 +330,7 @@ class ApiService {
     }
   }
 
-  // 4. Lấy voucher của user (usable và expired/used)
+  // 4. Lấy voucher của user
   static Future<Map<String, dynamic>> getUserVouchers(String username) async {
     try {
       final headers = await _getHeaders();
@@ -356,7 +368,7 @@ class ApiService {
     }
   }
 
-  // 6. Admin: Lấy tất cả voucher (quản lý)
+  // 6. Admin: Lấy tất cả voucher
   static Future<List<dynamic>> getAllVouchers() async {
     try {
       final headers = await _getHeaders();
@@ -438,7 +450,7 @@ class ApiService {
     }
   }
 
-  // 2. Lấy danh sách tên partners (cho dropdown)
+  // 2. Lấy danh sách tên partners
   static Future<List<dynamic>> getPartnerNames() async {
     try {
       final res = await http.get(
@@ -556,7 +568,7 @@ class ApiService {
     }
   }
 
-  // ================== IMAGE API (GridFS) ==================
+  // ================== IMAGE API ==================
 
   // 1. Upload ảnh cho partner
   static Future<Map<String, dynamic>> uploadPartnerImage({
@@ -597,7 +609,7 @@ class ApiService {
     }
   }
 
-  // 2. Upload ảnh từ File object
+  // 2. Upload ảnh từ File object - FIXED: Thêm đúng parameters
   static Future<Map<String, dynamic>> uploadPartnerImageFile({
     required String partnerId,
     required File imageFile,
@@ -632,25 +644,13 @@ class ApiService {
     }
   }
 
-  // ================== ERROR HANDLER ==================
+  // ================== CLEAN ERROR MESSAGE ==================
   static String cleanErrorMessage(String error) {
     // Loại bỏ phần "Exception: Lỗi kết nối:" để hiển thị gọn hơn
     return error
         .replaceAll('Exception: Lỗi kết nối: ', '')
         .replaceAll('Exception: ', '')
         .trim();
-  }
-
-  // ================== COMMON ERROR HANDLING ==================
-  static void handleApiError(http.Response response) {
-    if (response.statusCode == 503) {
-      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
-    }
-
-    final data = jsonDecode(response.body);
-    throw Exception(
-      data['error'] ?? "API request failed with status ${response.statusCode}",
-    );
   }
 
   // ================== GET CURRENT USER INFO ==================
@@ -667,5 +667,36 @@ class ApiService {
     } catch (e) {
       throw Exception("Không thể lấy thông tin user: ${e.toString()}");
     }
+  }
+
+  // ================== CLEAR TOKEN (LOGOUT) ==================
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('username');
+    await prefs.remove('userId');
+    await prefs.remove('role');
+    await prefs.remove('isAdmin');
+    await prefs.remove('isManager');
+  }
+
+  // ================== GET USER PREFERENCES ==================
+  static Future<Map<String, dynamic>> getUserPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'username': prefs.getString('username') ?? '',
+      'token': prefs.getString('token') ?? '',
+      'userId': prefs.getString('userId') ?? '',
+      'role': prefs.getString('role') ?? 'user',
+      'isAdmin': prefs.getBool('isAdmin') ?? false,
+      'isManager': prefs.getBool('isManager') ?? false,
+    };
+  }
+
+  // ================== CHECK IF USER IS LOGGED IN ==================
+  static Future<bool> isLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    return token != null && token.isNotEmpty;
   }
 }
