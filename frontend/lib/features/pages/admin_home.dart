@@ -145,8 +145,8 @@ class AdminHome extends StatelessWidget {
                       },
                     ),
                     _adminActionButton(
-                      icon: Icons.confirmation_num,
-                      label: 'Quản lý Voucher',
+                      icon: Icons.store_mall_directory,
+                      label: 'Quản lý Partners',
                       color: Colors.green,
                       onTap: () {
                         Navigator.push(

@@ -6,6 +6,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static const String baseUrl = "https://green-rewards-backend.onrender.com";
 
+  // ================== GET HEADERS WITH TOKEN ==================
+  static Future<Map<String, String>> _getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+
+    final headers = {"Content-Type": "application/json"};
+
+    if (token.isNotEmpty) {
+      headers["Authorization"] = "Bearer $token";
+    }
+
+    return headers;
+  }
+
   // ================== HEALTH CHECK ==================
   static Future<Map<String, dynamic>> healthCheck() async {
     try {
@@ -37,7 +51,14 @@ class ApiService {
       );
 
       if (res.statusCode == 200) {
-        return jsonDecode(res.body);
+        final data = jsonDecode(res.body);
+
+        // Lưu token nếu có
+        final prefs = await SharedPreferences.getInstance();
+        prefs.setString('username', data['username']);
+        prefs.setString('token', data.get('token', ''));
+
+        return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
@@ -98,9 +119,10 @@ class ApiService {
   // ================== DELETE USER ==================
   static Future<bool> deleteUser(String userId) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.delete(
         Uri.parse("$baseUrl/users/$userId"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
       return res.statusCode == 200;
@@ -109,15 +131,21 @@ class ApiService {
     }
   }
 
-  // ================== RESET POINT ==================
-  static Future<bool> resetPoint(String userId) async {
+  // ================== RESET POINT (CẬP NHẬT VỚI MESSAGE) ==================
+  static Future<bool> resetPoint(
+    String userId, {
+    String message = "Điểm đã được reset bởi quản trị viên",
+  }) async {
     try {
-      final res = await http.put(
+      final headers = await _getHeaders();
+      final res = await http.post(
         Uri.parse("$baseUrl/users/$userId/reset-point"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
+        body: jsonEncode({"message": message}),
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }
@@ -129,18 +157,20 @@ class ApiService {
     required String newRole,
   }) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.put(
         Uri.parse("$baseUrl/users/$userId/role"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
         body: jsonEncode({"role": newRole}),
       );
 
-      if (res.statusCode == 200) {
-        return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 200 && data["success"] == true) {
+        return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
-        final data = jsonDecode(res.body);
         throw Exception(data["error"] ?? "Cập nhật role thất bại");
       }
     } catch (e) {
@@ -155,9 +185,10 @@ class ApiService {
     required String billCode,
     required int point,
   }) async {
+    final headers = await _getHeaders();
     final res = await http.post(
       Uri.parse("$baseUrl/scan/add-point"),
-      headers: {"Content-Type": "application/json"},
+      headers: headers,
       body: jsonEncode({
         "username": username,
         "partner": partner,
@@ -168,7 +199,7 @@ class ApiService {
 
     final data = jsonDecode(res.body);
 
-    if (res.statusCode == 200) {
+    if (res.statusCode == 200 && data["success"] == true) {
       return data;
     } else if (res.statusCode == 503) {
       throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
@@ -215,9 +246,10 @@ class ApiService {
     required String expired,
   }) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.post(
         Uri.parse("$baseUrl/admin/vouchers"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
         body: jsonEncode({
           "partner": partner,
           "point": point,
@@ -226,13 +258,14 @@ class ApiService {
         }),
       );
 
-      if (res.statusCode == 201) {
-        return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 201 && data["success"] == true) {
+        return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
-        final error = jsonDecode(res.body);
-        throw Exception(error['error'] ?? "Tạo voucher thất bại");
+        throw Exception(data['error'] ?? "Tạo voucher thất bại");
       }
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
@@ -264,15 +297,16 @@ class ApiService {
     required String voucherId,
   }) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.post(
         Uri.parse("$baseUrl/users/$username/exchange-voucher"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
         body: jsonEncode({"voucher_id": voucherId}),
       );
 
       final data = jsonDecode(res.body);
 
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && data["success"] == true) {
         return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
@@ -287,9 +321,10 @@ class ApiService {
   // 4. Lấy voucher của user (usable và expired/used)
   static Future<Map<String, dynamic>> getUserVouchers(String username) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.get(
         Uri.parse("$baseUrl/users/$username/vouchers"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
       if (res.statusCode == 200) {
@@ -308,12 +343,14 @@ class ApiService {
   // 5. Đánh dấu voucher đã sử dụng
   static Future<bool> markVoucherUsed(String voucherId) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.put(
         Uri.parse("$baseUrl/vouchers/$voucherId/use"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }
@@ -322,9 +359,10 @@ class ApiService {
   // 6. Admin: Lấy tất cả voucher (quản lý)
   static Future<List<dynamic>> getAllVouchers() async {
     try {
+      final headers = await _getHeaders();
       final res = await http.get(
         Uri.parse("$baseUrl/admin/vouchers"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
       if (res.statusCode == 200) {
@@ -362,9 +400,10 @@ class ApiService {
   // 8. Admin: Thống kê voucher
   static Future<Map<String, dynamic>> getVoucherStats() async {
     try {
+      final headers = await _getHeaders();
       final res = await http.get(
         Uri.parse("$baseUrl/admin/vouchers/stats"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
       if (res.statusCode == 200) {
@@ -426,9 +465,10 @@ class ApiService {
     String? imageId,
   }) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.post(
         Uri.parse("$baseUrl/admin/partners"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
         body: jsonEncode({
           "name": name,
           "type": type,
@@ -437,13 +477,14 @@ class ApiService {
         }),
       );
 
-      if (res.statusCode == 201) {
-        return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 201 && data["success"] == true) {
+        return data;
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
-        final error = jsonDecode(res.body);
-        throw Exception(error['error'] ?? "Tạo partner thất bại");
+        throw Exception(data['error'] ?? "Tạo partner thất bại");
       }
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
@@ -459,9 +500,10 @@ class ApiService {
     String? imageId,
   }) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.put(
         Uri.parse("$baseUrl/admin/partners/$partnerId"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
         body: jsonEncode({
           "name": name,
           "type": type,
@@ -470,7 +512,8 @@ class ApiService {
         }),
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }
@@ -479,12 +522,14 @@ class ApiService {
   // 5. Xóa partner (Admin)
   static Future<bool> deletePartner(String partnerId) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.delete(
         Uri.parse("$baseUrl/admin/partners/$partnerId"),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }
@@ -524,6 +569,9 @@ class ApiService {
         Uri.parse('$baseUrl/admin/upload-partner-image'),
       );
 
+      final headers = await _getHeaders();
+      request.headers.addAll(headers);
+
       request.fields['partner_id'] = partnerId;
 
       var file = await http.MultipartFile.fromPath(
@@ -537,7 +585,7 @@ class ApiService {
       var responseData = await response.stream.bytesToString();
       var data = jsonDecode(responseData);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && data["success"] == true) {
         return data;
       } else if (response.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
@@ -571,12 +619,14 @@ class ApiService {
   // 4. Xóa ảnh
   static Future<bool> deleteImage(String imageId) async {
     try {
+      final headers = await _getHeaders();
       final res = await http.delete(
         Uri.parse('$baseUrl/admin/image/$imageId'),
-        headers: {"Content-Type": "application/json"},
+        headers: headers,
       );
 
-      return res.statusCode == 200;
+      final data = jsonDecode(res.body);
+      return data["success"] == true;
     } catch (e) {
       return false;
     }

@@ -15,9 +15,9 @@ class _ManagementState extends State<Management> {
   bool isLoading = true;
   bool hasError = false;
   String errorMessage = '';
-  Map<String, dynamic> currentUser = {};
   bool isCurrentAdmin = false;
   bool isCurrentManager = false;
+  String currentUserId = '';
 
   @override
   void initState() {
@@ -30,10 +30,12 @@ class _ManagementState extends State<Management> {
     try {
       final isAdmin = await UserPreferences.isAdmin();
       final role = await UserPreferences.getRole();
+      final id = await UserPreferences.getUserId();
 
       setState(() {
         isCurrentAdmin = isAdmin;
         isCurrentManager = role == 'manager' || role == 'admin';
+        currentUserId = id ?? '';
       });
     } catch (e) {
       print('Lỗi khi load thông tin user hiện tại: $e');
@@ -76,17 +78,28 @@ class _ManagementState extends State<Management> {
   /// XOÁ USER (VỚI PHÂN QUYỀN)
   /// =======================
   Future<void> confirmDeleteUser(Map user) async {
-    final String userId = user["id"];
+    final String userId = user["id"] ?? '';
     final String username = user["username"] ?? "người dùng";
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
-    final bool isUserManager =
-        user["isManager"] == true || user["role"] == "manager";
+    final String userRole = user["role"] ?? "user";
+    final bool isUserAdmin = userRole == "admin";
+    final bool isUserManager = userRole == "manager";
 
     // 🔥 PHÂN QUYỀN XOÁ
     if (isUserAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Không thể xóa tài khoản admin'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Không cho phép xóa chính mình
+    if (userId == currentUserId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể xóa tài khoản của chính mình'),
           backgroundColor: Colors.red,
         ),
       );
@@ -151,10 +164,10 @@ class _ManagementState extends State<Management> {
   /// NÂNG/HẠ ROLE (CHỈ ADMIN)
   /// =======================
   Future<void> confirmChangeRole(Map user) async {
-    final String userId = user["id"];
+    final String userId = user["id"] ?? '';
     final String username = user["username"] ?? "người dùng";
     final String currentRole = user["role"] ?? "user";
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
+    final bool isUserAdmin = currentRole == "admin";
 
     // Chỉ admin mới có quyền này
     if (!isCurrentAdmin) {
@@ -178,6 +191,17 @@ class _ManagementState extends State<Management> {
       return;
     }
 
+    // Không cho phép thay đổi role của chính mình
+    if (userId == currentUserId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể thay đổi role của chính mình'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     // Xác định role mới
     String newRole = currentRole == "user" ? "manager" : "user";
     String newRoleName = newRole == "manager" ? "Quản lý" : "Người dùng";
@@ -187,9 +211,7 @@ class _ManagementState extends State<Management> {
       builder: (_) => AlertDialog(
         title: const Text('Thay đổi quyền'),
         content: Text(
-          'Bạn có chắc muốn thay đổi quyền của "$username" '
-          'từ ${currentRole == "user" ? "Người dùng" : "Quản lý"} '
-          'thành $newRoleName?',
+          'Bạn có chắc muốn thay đổi quyền của "$username" thành $newRoleName?',
         ),
         actions: [
           TextButton(
@@ -223,7 +245,6 @@ class _ManagementState extends State<Management> {
       if (!mounted) return;
       Navigator.pop(context); // Đóng loading
 
-      // Kiểm tra kết quả từ API (Map trả về)
       if (result["success"] == true) {
         reload();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -236,8 +257,8 @@ class _ManagementState extends State<Management> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Thay đổi role thất bại'),
+          SnackBar(
+            content: Text(result["message"] ?? 'Thay đổi role thất bại'),
             backgroundColor: Colors.red,
           ),
         );
@@ -259,18 +280,21 @@ class _ManagementState extends State<Management> {
   /// RESET POINT (VỚI PHÂN QUYỀN)
   /// =======================
   Future<void> confirmResetPoint(Map user) async {
-    final String userId = user["id"];
+    final String userId = user["id"] ?? '';
     final String username = user["username"] ?? "người dùng";
+    final String userRole = user["role"] ?? "user";
     final int currentPoint = (user["point"] is num)
         ? (user["point"] as num).toInt()
         : 0;
 
-    // Kiểm tra nếu user là admin
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
-    if (isUserAdmin) {
+    // Kiểm tra nếu user là admin hoặc manager
+    final bool isUserAdmin = userRole == "admin";
+    final bool isUserManager = userRole == "manager";
+
+    if (isUserAdmin || isUserManager) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không thể reset điểm của admin'),
+          content: Text('Không thể reset điểm của admin hoặc quản lý'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -354,12 +378,11 @@ class _ManagementState extends State<Management> {
   }
 
   /// =======================
-  /// HIỂN THỊ CÁC NÚT CHỨC NĂNG
+  /// LẤY DANH SÁCH CÁC NÚT CHỨC NĂNG
   /// =======================
-  Widget _buildActionButtons(Map user) {
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
-    final bool isUserManager =
-        user["isManager"] == true || user["role"] == "manager";
+  List<Widget> _getActionButtons(Map user) {
+    final String userId = user["id"] ?? '';
+    final String userRole = user["role"] ?? "user";
     final int point = (user["point"] is num)
         ? (user["point"] as num).toInt()
         : 0;
@@ -367,12 +390,13 @@ class _ManagementState extends State<Management> {
 
     List<Widget> buttons = [];
 
-    // Nút xem lịch sử (cho tất cả user không phải admin)
-    if (!isUserAdmin) {
+    // Nút xem lịch sử (cho tất cả user không phải admin và manager)
+    if (userRole == "user") {
       buttons.add(
-        ElevatedButton.icon(
-          icon: const Icon(Icons.history, size: 16),
-          label: const Text('Lịch sử'),
+        IconButton(
+          icon: const Icon(Icons.history, size: 22),
+          color: Colors.green,
+          tooltip: 'Xem lịch sử điểm',
           onPressed: () {
             Navigator.push(
               context,
@@ -381,112 +405,83 @@ class _ManagementState extends State<Management> {
               ),
             );
           },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(100, 36),
-          ),
         ),
       );
     }
 
     // Nút reset điểm (chỉ cho user thường, không dành cho admin/manager)
-    if (!isUserAdmin && !isUserManager && point > 0) {
-      buttons.add(const SizedBox(width: 8));
+    if (userRole == "user" && point > 0) {
       buttons.add(
-        ElevatedButton.icon(
-          icon: const Icon(Icons.refresh, size: 16),
-          label: const Text('Reset điểm'),
+        IconButton(
+          icon: const Icon(Icons.refresh, size: 22),
+          color: Colors.orange,
+          tooltip: 'Reset điểm về 0',
           onPressed: () => confirmResetPoint(user),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(100, 36),
-          ),
         ),
       );
     }
 
-    // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager)
-    if (isCurrentAdmin && !isUserAdmin) {
-      buttons.add(const SizedBox(width: 8));
+    // Nút thay đổi role (CHỈ ADMIN mới thấy và chỉ cho user thường/manager, không cho tự sửa mình)
+    if (isCurrentAdmin && userId != currentUserId && userRole != "admin") {
       buttons.add(
-        ElevatedButton.icon(
+        IconButton(
           icon: Icon(
-            user["role"] == "user" ? Icons.arrow_upward : Icons.arrow_downward,
-            size: 16,
+            userRole == "user" ? Icons.arrow_upward : Icons.arrow_downward,
+            size: 22,
           ),
-          label: Text(user["role"] == "user" ? 'Nâng quyền' : 'Hạ quyền'),
+          color: Colors.blue,
+          tooltip: userRole == "user" ? 'Nâng lên quản lý' : 'Hạ xuống user',
           onPressed: () => confirmChangeRole(user),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(100, 36),
-          ),
         ),
       );
     }
 
-    // Nút xoá user (Admin có thể xoá manager và user, Manager chỉ có thể xoá user)
-    if ((isCurrentAdmin && !isUserAdmin) ||
-        (isCurrentManager &&
-            !isCurrentAdmin &&
-            !isUserAdmin &&
-            !isUserManager)) {
-      buttons.add(const SizedBox(width: 8));
+    // Nút xoá user
+    bool canDelete = false;
+    if (isCurrentAdmin && userId != currentUserId && userRole != "admin") {
+      // Admin có thể xoá manager và user (trừ admin khác và chính mình)
+      canDelete = true;
+    } else if (isCurrentManager &&
+        !isCurrentAdmin &&
+        userId != currentUserId &&
+        userRole == "user") {
+      // Manager chỉ có thể xoá user thường (trừ chính mình)
+      canDelete = true;
+    }
+
+    if (canDelete) {
       buttons.add(
-        ElevatedButton.icon(
-          icon: const Icon(Icons.delete_outline, size: 16),
-          label: const Text('Xoá'),
+        IconButton(
+          icon: const Icon(Icons.delete_outline, size: 22),
+          color: Colors.red,
+          tooltip: 'Xoá người dùng',
           onPressed: () => confirmDeleteUser(user),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(100, 36),
-          ),
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: buttons,
-      ),
-    );
+    return buttons;
   }
 
   /// =======================
   /// HIỂN THỊ BADGE THEO ROLE
   /// =======================
   Widget _buildRoleBadge(Map user) {
-    final bool isUserAdmin = user["isAdmin"] == true || user["role"] == "admin";
-    final bool isUserManager =
-        user["isManager"] == true || user["role"] == "manager";
+    final String role = user["role"] ?? "user";
 
     String roleText = 'USER';
     Color color = Colors.green;
-    Color bgColor = Colors.green[50]!;
 
-    if (isUserAdmin) {
+    if (role == "admin") {
       roleText = 'ADMIN';
       color = Colors.red;
-      bgColor = Colors.red[50]!;
-    } else if (isUserManager) {
-      roleText = 'QUẢN LÝ';
+    } else if (role == "manager") {
+      roleText = 'MANAGER';
       color = Colors.blue;
-      bgColor = Colors.blue[50]!;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(
+    return Chip(
+      label: Text(
         roleText,
         style: TextStyle(
           fontSize: 12,
@@ -494,6 +489,9 @@ class _ManagementState extends State<Management> {
           color: color,
         ),
       ),
+      backgroundColor: color.withOpacity(0.1),
+      side: BorderSide(color: color.withOpacity(0.3)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     );
   }
 
@@ -574,13 +572,6 @@ class _ManagementState extends State<Management> {
             'Người dùng đăng ký sẽ hiển thị ở đây',
             style: TextStyle(color: Colors.grey[600]),
           ),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.refresh),
-            label: const Text('Tải lại'),
-            onPressed: reload,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-          ),
         ],
       ),
     );
@@ -592,19 +583,15 @@ class _ManagementState extends State<Management> {
   Widget _buildStats() {
     final totalUsers = users.length;
     final adminCount = users
-        .where((u) => u["isAdmin"] == true || u["role"] == "admin")
+        .where((u) => (u["role"] ?? "user") == "admin")
         .length;
     final managerCount = users
-        .where(
-          (u) =>
-              (u["isManager"] == true || u["role"] == "manager") &&
-              !(u["isAdmin"] == true || u["role"] == "admin"),
-        )
+        .where((u) => (u["role"] ?? "user") == "manager")
         .length;
     final userCount = totalUsers - adminCount - managerCount;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -616,47 +603,38 @@ class _ManagementState extends State<Management> {
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.green.shade100),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'TỔNG QUAN NGƯỜI DÙNG',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
-          ),
-          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatItem(
-                'Tổng số',
-                '$totalUsers',
-                Icons.people,
-                Colors.green,
+              Text(
+                'TỔNG QUAN',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
               ),
-              _buildStatItem(
-                'Admin',
-                '$adminCount',
-                Icons.admin_panel_settings,
-                Colors.red,
+              Row(
+                children: [
+                  Text(
+                    '$totalUsers người dùng',
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
               ),
-              _buildStatItem(
-                'Quản lý',
-                '$managerCount',
-                Icons.supervisor_account,
-                Colors.blue,
-              ),
-              _buildStatItem(
-                'Người dùng',
-                '$userCount',
-                Icons.person,
-                Colors.orange,
-              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('Admin', '$adminCount', Colors.red),
+              _buildStatItem('Manager', '$managerCount', Colors.blue),
+              _buildStatItem('User', '$userCount', Colors.green),
             ],
           ),
         ],
@@ -664,32 +642,29 @@ class _ManagementState extends State<Management> {
     );
   }
 
-  Widget _buildStatItem(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _buildStatItem(String label, String value, Color color) {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(8),
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
+          child: Center(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
           ),
         ),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 6),
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
       ],
     );
   }
@@ -713,44 +688,39 @@ class _ManagementState extends State<Management> {
               final int point = (u["point"] is num)
                   ? (u["point"] as num).toInt()
                   : 0;
-              final bool isUserAdmin =
-                  u["isAdmin"] == true || u["role"] == "admin";
-              final bool isUserManager =
-                  u["isManager"] == true || u["role"] == "manager";
+              final String role = u["role"] ?? "user";
+              final bool isUserAdmin = role == "admin";
+              final bool isUserManager = role == "manager";
+              final bool isUserRegular = role == "user";
               final String username = u["username"] ?? "Không có tên";
               final String email = u["email"] ?? "Không có email";
               final String phone = u["phone"] ?? "Không có SĐT";
 
-              Color cardColor;
+              Color borderColor;
               if (isUserAdmin) {
-                cardColor = Colors.red.shade50;
+                borderColor = Colors.red.shade200;
               } else if (isUserManager) {
-                cardColor = Colors.blue.shade50;
+                borderColor = Colors.blue.shade200;
               } else {
-                cardColor = Colors.white;
+                borderColor = Colors.grey.shade200;
               }
 
+              final actionButtons = _getActionButtons(u);
+
               return Card(
-                margin: const EdgeInsets.only(bottom: 16),
-                elevation: 3,
+                margin: const EdgeInsets.only(bottom: 12),
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isUserAdmin
-                        ? Colors.red.shade200
-                        : isUserManager
-                        ? Colors.blue.shade200
-                        : Colors.grey.shade200,
-                    width: 1,
-                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: borderColor, width: 1),
                 ),
-                color: cardColor,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           CircleAvatar(
                             backgroundColor: isUserAdmin
@@ -758,7 +728,7 @@ class _ManagementState extends State<Management> {
                                 : isUserManager
                                 ? Colors.blue.shade100
                                 : Colors.green.shade100,
-                            radius: 24,
+                            radius: 20,
                             child: Icon(
                               isUserAdmin
                                   ? Icons.admin_panel_settings
@@ -770,45 +740,42 @@ class _ManagementState extends State<Management> {
                                   : isUserManager
                                   ? Colors.blue.shade800
                                   : Colors.green.shade800,
-                              size: 24,
+                              size: 20,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      username,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                        color: isUserAdmin
-                                            ? Colors.red.shade800
-                                            : isUserManager
-                                            ? Colors.blue.shade800
-                                            : Colors.black,
+                                    Expanded(
+                                      child: Text(
+                                        username,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
                                     _buildRoleBadge(u),
                                   ],
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   email,
-                                  style: const TextStyle(
-                                    color: Colors.grey,
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
                                     fontSize: 14,
                                   ),
                                 ),
+                                const SizedBox(height: 2),
                                 Text(
                                   'SĐT: $phone',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 13,
                                   ),
                                 ),
                               ],
@@ -816,41 +783,58 @@ class _ManagementState extends State<Management> {
                           ),
                         ],
                       ),
-                      if (!isUserAdmin && !isUserManager)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.green.shade200),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.star,
+
+                      // Hiển thị điểm cho user thường
+                      if (isUserRegular && point > 0)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.star,
+                                color: Colors.green.shade700,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$point điểm',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
                                   color: Colors.green.shade700,
-                                  size: 18,
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Điểm: $point',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      _buildActionButtons(u),
+
+                      // Các button chức năng (chỉ icon)
+                      if (actionButtons.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.grey.shade200,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: actionButtons,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -865,12 +849,25 @@ class _ManagementState extends State<Management> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9F5),
+      backgroundColor: const Color(0xFFF8FAF8),
       appBar: AppBar(
-        backgroundColor: Colors.green,
-        title: const Text('Quản lý người dùng'),
-        centerTitle: true,
-        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 1,
+        title: const Text(
+          'Quản lý người dùng',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        centerTitle: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 22),
+            onPressed: reload,
+            tooltip: 'Tải lại',
+            color: Colors.green,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: isLoading
           ? _buildLoading()
@@ -879,13 +876,6 @@ class _ManagementState extends State<Management> {
           : users.isEmpty
           ? _buildEmpty()
           : _buildUserList(),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.green,
-        onPressed: reload,
-        tooltip: 'Tải lại danh sách',
-        child: const Icon(Icons.refresh),
-        elevation: 4,
-      ),
     );
   }
 }

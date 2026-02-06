@@ -106,8 +106,17 @@ class _HistoryPointState extends State<HistoryPoint> {
     final type = history['type'] ?? '';
     final message = history['message'] ?? '';
     final partner = history['partner'] ?? '';
+    final resetBy = history['reset_by'] ?? '';
 
-    if (type == 'add' && partner.isNotEmpty) {
+    if (type == 'reset') {
+      final point = history['point'] is num
+          ? (history['point'] as num).toInt()
+          : 0;
+      if (resetBy.isNotEmpty) {
+        return 'Đã reset $point điểm (bởi $resetBy)';
+      }
+      return 'Đã reset $point điểm';
+    } else if (type == 'add' && partner.isNotEmpty) {
       return 'Tích điểm từ $partner';
     } else if (type == 'exchange' && partner.isNotEmpty) {
       return 'Đổi voucher $partner';
@@ -334,6 +343,7 @@ class _HistoryPointState extends State<HistoryPoint> {
         final partner = h['partner'] ?? '';
         final billCode = h['bill'] ?? '';
         final time = h['time'] ?? '';
+        final resetBy = h['reset_by'] ?? '';
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -470,11 +480,31 @@ class _HistoryPointState extends State<HistoryPoint> {
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          h['message'],
-                          style: const TextStyle(
+                          formatMessage(h),
+                          style: TextStyle(
                             fontSize: 14,
                             fontStyle: FontStyle.italic,
+                            color: Colors.grey[700],
                           ),
+                        ),
+                      ),
+
+                    // Hiển thị người reset nếu có
+                    if (type == 'reset' && resetBy.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person, size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Bởi: $resetBy',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
