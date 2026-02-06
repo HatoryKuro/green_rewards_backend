@@ -29,22 +29,44 @@ def safe_str(value):
     return str(value)
 
 # =========================
-# ENSURE ADMIN
+# DATABASE CHECK UTILITY
 # =========================
-admin = users.find_one({"username": "admin"})
-if not admin:
-    users.insert_one({
-        "username": "admin",
-        "email": "admin@system.com",
-        "phone": "0000000000",
-        "password": hash_password("admin1"),
-        "role": "admin",
-        "isAdmin": True,
-        "point": 0,
-        "usedBills": [],
-        "history": [],
-        "created_at": datetime.now()
-    })
+def check_database():
+    """Kiểm tra xem database có kết nối không"""
+    return users is not None
+
+# =========================
+# ENSURE ADMIN (với kiểm tra database)
+# =========================
+if check_database():
+    try:
+        admin = users.find_one({"username": "admin"})
+        if not admin:
+            users.insert_one({
+                "username": "admin",
+                "email": "admin@system.com",
+                "phone": "0000000000",
+                "password": hash_password("admin1"),
+                "role": "admin",
+                "isAdmin": True,
+                "point": 0,
+                "usedBills": [],
+                "history": [],
+                "created_at": datetime.now()
+            })
+    except Exception as e:
+        print(f"⚠ Không thể tạo admin user: {e}")
+
+# =========================
+# HEALTH CHECK ENDPOINT
+# =========================
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "ok" if check_database() else "error",
+        "database": "connected" if check_database() else "disconnected",
+        "message": "Service is running" if check_database() else "Database connection failed"
+    }), 200 if check_database() else 503
 
 # =========================
 # AUTH ROUTES
@@ -52,6 +74,10 @@ if not admin:
 
 @app.route("/login", methods=["POST"])
 def login():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     identity = data.get("username")
     password = data.get("password")
@@ -79,6 +105,10 @@ def login():
 
 @app.route("/register", methods=["POST"])
 def register():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     
     # Kiểm tra required fields
@@ -128,6 +158,10 @@ def register():
 
 @app.route("/users", methods=["GET"])
 def get_all_users():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         users_list = users.find({"role": "user"}).sort("created_at", -1)
         
@@ -151,6 +185,10 @@ def get_all_users():
 
 @app.route("/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         # Không cho xóa admin
         user = users.find_one({"_id": ObjectId(user_id)})
@@ -167,6 +205,10 @@ def delete_user(user_id):
 
 @app.route("/users/<user_id>/reset-point", methods=["PUT"])
 def reset_user_point(user_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         result = users.update_one(
             {"_id": ObjectId(user_id)},
@@ -182,6 +224,10 @@ def reset_user_point(user_id):
 
 @app.route("/users/<username>", methods=["GET"])
 def get_user_by_username(username):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         user = users.find_one({"username": username})
         if not user:
@@ -207,6 +253,10 @@ def get_user_by_username(username):
 
 @app.route("/scan/add-point", methods=["POST"])
 def add_point_by_qr():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     
     required_fields = ["username", "partner", "billCode", "point"]
@@ -258,6 +308,10 @@ def add_point_by_qr():
 
 @app.route("/admin/vouchers", methods=["POST"])
 def create_voucher():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     
     required_fields = ["partner", "point", "maxPerUser", "expired"]
@@ -285,6 +339,10 @@ def create_voucher():
 
 @app.route("/vouchers", methods=["GET"])
 def get_available_vouchers():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify([]), 200  # Trả về mảng rỗng
+    
     try:
         vouchers_list = vouchers.find({"status": "available"}).sort("point", 1)
         
@@ -305,6 +363,10 @@ def get_available_vouchers():
 
 @app.route("/users/<username>/exchange-voucher", methods=["POST"])
 def exchange_voucher(username):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     voucher_id = data.get("voucher_id")
     
@@ -359,6 +421,10 @@ def exchange_voucher(username):
 
 @app.route("/users/<username>/vouchers", methods=["GET"])
 def get_user_vouchers(username):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"vouchers": []}), 200
+    
     try:
         user_vouchers_list = user_vouchers.find({"username": username})
         
@@ -380,6 +446,10 @@ def get_user_vouchers(username):
 
 @app.route("/vouchers/<voucher_id>/use", methods=["PUT"])
 def mark_voucher_used(voucher_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         result = user_vouchers.update_one(
             {"_id": ObjectId(voucher_id)},
@@ -395,6 +465,10 @@ def mark_voucher_used(voucher_id):
 
 @app.route("/admin/vouchers", methods=["GET"])
 def get_all_vouchers():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify([]), 200
+    
     try:
         vouchers_list = vouchers.find().sort("created_at", -1)
         
@@ -416,6 +490,10 @@ def get_all_vouchers():
 
 @app.route("/voucher/<voucher_id>", methods=["GET"])
 def get_voucher_detail(voucher_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
         if not voucher:
@@ -434,6 +512,15 @@ def get_voucher_detail(voucher_id):
 
 @app.route("/admin/vouchers/stats", methods=["GET"])
 def get_voucher_stats():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({
+            "total": 0,
+            "available": 0,
+            "exchanged": 0,
+            "used": 0
+        }), 200
+    
     try:
         total = vouchers.count_documents({})
         available = vouchers.count_documents({"status": "available"})
@@ -455,6 +542,10 @@ def get_voucher_stats():
 
 @app.route("/admin/upload-partner-image", methods=["POST"])
 def upload_partner_image():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         partner_id = request.form.get("partner_id")
         if not partner_id:
@@ -500,6 +591,10 @@ def upload_partner_image():
 
 @app.route("/image/<image_id>", methods=["GET"])
 def get_image(image_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         grid_out = fs.get(ObjectId(image_id))
         
@@ -519,6 +614,10 @@ def get_image(image_id):
 
 @app.route("/admin/image/<image_id>", methods=["DELETE"])
 def delete_image(image_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         fs.delete(ObjectId(image_id))
         
@@ -537,6 +636,10 @@ def delete_image(image_id):
 
 @app.route("/partners", methods=["GET"])
 def get_partners():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify([]), 200
+    
     try:
         partners_list = partners.find({"status": "active"}).sort("name", 1)
         
@@ -567,6 +670,10 @@ def get_partners():
 
 @app.route("/partners/<partner_id>", methods=["GET"])
 def get_partner(partner_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         partner = partners.find_one({"_id": ObjectId(partner_id)})
         if not partner:
@@ -585,6 +692,10 @@ def get_partner(partner_id):
 
 @app.route("/admin/partners", methods=["POST"])
 def create_partner():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     
     if not data.get("name"):
@@ -614,6 +725,10 @@ def create_partner():
 
 @app.route("/admin/partners/<partner_id>", methods=["PUT"])
 def update_partner(partner_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     data = request.json
     
     try:
@@ -647,6 +762,10 @@ def update_partner(partner_id):
 
 @app.route("/admin/partners/<partner_id>", methods=["DELETE"])
 def delete_partner(partner_id):
+    # Kiểm tra database
+    if not check_database():
+        return jsonify({"error": "Database không khả dụng"}), 503
+    
     try:
         partner = partners.find_one({"_id": ObjectId(partner_id)})
         if not partner:
@@ -673,6 +792,10 @@ def delete_partner(partner_id):
 
 @app.route("/partners/names", methods=["GET"])
 def get_partner_names():
+    # Kiểm tra database
+    if not check_database():
+        return jsonify([]), 200
+    
     try:
         partners_list = partners.find({"status": "active"}).sort("name", 1)
         
@@ -688,4 +811,5 @@ def get_partner_names():
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)

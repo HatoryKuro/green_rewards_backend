@@ -22,7 +22,7 @@ except Exception as e:
     db = None
 
 # Collections - chỉ tạo nếu kết nối thành công
-if db:
+if db is not None:  # ĐÃ SỬA: thay if db: thành if db is not None:
     users = db["users"]
     vouchers = db["vouchers"]
     user_vouchers = db["user_vouchers"]
