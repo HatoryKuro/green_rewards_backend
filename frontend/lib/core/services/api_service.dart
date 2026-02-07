@@ -236,23 +236,31 @@ class ApiService {
 
   // ================== VOUCHER API ==================
 
-  // 1. Admin: Tạo voucher mới
+  // 1. Admin: Tạo voucher mới (ĐÃ CẬP NHẬT THÊM billCode)
   static Future<Map<String, dynamic>> createVoucher({
     required String partner,
     required int point,
     required int maxPerUser,
     required String expired,
+    String? billCode, // Thêm trường billCode (tùy chọn)
   }) async {
     try {
+      // Tạo body request, thêm billCode nếu có
+      Map<String, dynamic> requestBody = {
+        "partner": partner,
+        "point": point,
+        "maxPerUser": maxPerUser,
+        "expired": expired,
+      };
+
+      if (billCode != null && billCode.isNotEmpty) {
+        requestBody['billCode'] = billCode;
+      }
+
       final res = await http.post(
         Uri.parse("$baseUrl/admin/vouchers"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "partner": partner,
-          "point": point,
-          "maxPerUser": maxPerUser,
-          "expired": expired,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       if (res.statusCode == 201) {
@@ -406,6 +414,27 @@ class ApiService {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       }
       return {};
+    } catch (e) {
+      throw Exception("Lỗi kết nối: ${e.toString()}");
+    }
+  }
+
+  // 9. Admin: Xóa voucher
+  static Future<bool> deleteVoucher(String voucherId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse("$baseUrl/admin/vouchers/$voucherId"),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      if (res.statusCode == 200) {
+        return true;
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      } else {
+        final error = jsonDecode(res.body);
+        throw Exception(error['error'] ?? "Xóa voucher thất bại");
+      }
     } catch (e) {
       throw Exception("Lỗi kết nối: ${e.toString()}");
     }

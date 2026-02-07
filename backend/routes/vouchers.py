@@ -235,3 +235,29 @@ def get_voucher_stats():
         }), 200
     except Exception as e:
         return json_error(f"Lỗi database: {str(e)}", 500)
+
+@vouchers_bp.route("/admin/vouchers/<voucher_id>", methods=["DELETE"])
+def delete_voucher(voucher_id):
+    """Xóa voucher (Admin only)"""
+    # Kiểm tra database
+    if not check_database():
+        return json_error("Database không khả dụng", 503)
+    
+    try:
+        # Kiểm tra voucher có tồn tại không
+        voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
+        if not voucher:
+            return json_error("Voucher không tồn tại", 404)
+        
+        # Xóa voucher
+        result = vouchers.delete_one({"_id": ObjectId(voucher_id)})
+        
+        if result.deleted_count == 1:
+            return jsonify({
+                "message": "Xóa voucher thành công",
+                "deleted_id": voucher_id
+            }), 200
+        else:
+            return json_error("Không thể xóa voucher", 500)
+    except Exception as e:
+        return json_error(f"Lỗi khi xóa voucher: {str(e)}", 500)
