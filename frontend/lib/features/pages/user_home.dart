@@ -6,7 +6,7 @@ import '../../core/services/api_service.dart';
 
 import '../scan/qrcode_user.dart';
 import '../auth/login.dart';
-import '../other/partner_list.dart';
+import '../user/partner_list.dart';
 import '../other/contact.dart';
 import '../user/history_point.dart';
 import '../user/voucher_wallet.dart';

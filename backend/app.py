@@ -85,24 +85,6 @@ if check_database():
                 "created_at": datetime.now()
             })
             print("✓ Đã tạo tài khoản admin mặc định")
-        
-        # Kiểm tra và tạo manager nếu chưa có
-        manager = users.find_one({"username": "manager"})
-        if not manager:
-            users.insert_one({
-                "username": "manager",
-                "email": "manager@system.com",
-                "phone": "1111111111",
-                "password": hash_password("manager1"),
-                "role": "manager",
-                "isAdmin": False,
-                "isManager": True,
-                "point": 0,
-                "usedBills": [],
-                "history": [],
-                "created_at": datetime.now()
-            })
-            print("✓ Đã tạo tài khoản manager mặc định")
             
     except Exception as e:
         print(f"⚠ Không thể tạo user mặc định: {e}")

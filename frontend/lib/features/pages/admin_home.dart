@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:green_rewards/features/admin/partner_create.dart';
-import 'package:green_rewards/features/other/partner_list.dart';
+import 'package:green_rewards/features/user/partner_list.dart';
 import 'package:green_rewards/core/services/user_preferences.dart';
 import '../auth/login.dart';
 import '../../features/admin/voucher_create.dart';
