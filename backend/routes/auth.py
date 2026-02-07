@@ -1,6 +1,6 @@
-from flask import Blueprint, request, jsonify  # Đảm bảo có jsonify
+from flask import Blueprint, request, jsonify
 from models.database import users, check_database
-from utils.helpers import hash_password, safe_int, json_error  # Đảm bảo có safe_int
+from utils.helpers import hash_password, safe_int, json_error
 from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
@@ -12,8 +12,15 @@ def login():
         return json_error("Database không khả dụng", 503)
     
     data = request.json
-    identity = data.get("username")
+    if not data:
+        return json_error("Không có dữ liệu", 400)
+    
+    # NHẬN CẢ 'identifier' VÀ 'username' (tương thích cả 2)
+    identity = data.get("identifier") or data.get("username")
     password = data.get("password")
+
+    if not identity or not password:
+        return json_error("Vui lòng điền đầy đủ thông tin", 400)
 
     user = users.find_one({
         "$or": [
@@ -49,6 +56,8 @@ def register():
         return json_error("Database không khả dụng", 503)
     
     data = request.json
+    if not data:
+        return json_error("Không có dữ liệu", 400)
     
     # Kiểm tra required fields
     required_fields = ["username", "email", "phone", "password"]
