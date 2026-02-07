@@ -103,6 +103,7 @@ if check_database():
                 "created_at": datetime.now()
             })
             print("✓ Đã tạo tài khoản manager mặc định")
+            
     except Exception as e:
         print(f"⚠ Không thể tạo user mặc định: {e}")
 

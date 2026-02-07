@@ -95,6 +95,47 @@ class ApiService {
     }
   }
 
+  // ================== GET USER BY USERNAME (Dùng cho UserHome & History) ==================
+  static Future<Map<String, dynamic>?> getUserByUsername(
+    String username,
+  ) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/users/$username'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      } else if (res.statusCode == 404) {
+        return null; // User không tồn tại
+      } else if (res.statusCode == 503) {
+        throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
+      }
+      return null;
+    } catch (e) {
+      print('Lỗi khi lấy user by username: $e');
+      return null;
+    }
+  }
+
+  // ================== GET CURRENT USER INFO ==================
+  static Future<Map<String, dynamic>?> getCurrentUserInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('username') ?? '';
+
+      if (username.isEmpty) {
+        return null;
+      }
+
+      return await getUserByUsername(username);
+    } catch (e) {
+      print('Lỗi khi lấy current user info: $e');
+      return null;
+    }
+  }
+
   // ================== DELETE USER ==================
   static Future<bool> deleteUser(String userId) async {
     try {
@@ -136,7 +177,7 @@ class ApiService {
       );
 
       if (res.statusCode == 200) {
-        return jsonDecode(res.body);
+        return {"success": true, ...jsonDecode(res.body)};
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
@@ -175,34 +216,7 @@ class ApiService {
     }
 
     // Nếu lỗi (ví dụ: bill already used), quăng lỗi ra để Flutter nhận diện
-    throw data["error"] ?? "Cộng điểm thất bại";
-  }
-
-  // ================== GET USER BY USERNAME (Dùng cho History) ==================
-  static Future<Map<String, dynamic>> getUserByUsername(String username) async {
-    final res = await http.get(
-      Uri.parse('$baseUrl/users/$username'),
-      headers: {'Content-Type': 'application/json'},
-    );
-
-    if (res.statusCode == 404) {
-      throw Exception('Không tìm thấy thông tin user này');
-    } else if (res.statusCode == 503) {
-      throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
-    }
-
-    if (res.statusCode != 200) {
-      throw Exception('Lỗi hệ thống: ${res.statusCode}');
-    }
-
-    final data = jsonDecode(res.body);
-
-    // Đảm bảo history luôn có
-    if (data['history'] == null || data['history'] is! List) {
-      data['history'] = [];
-    }
-
-    return data;
+    throw Exception(data["error"] ?? "Cộng điểm thất bại");
   }
 
   // ================== VOUCHER API ==================
@@ -285,7 +299,7 @@ class ApiService {
   }
 
   // 4. Lấy voucher của user (usable và expired/used)
-  static Future<Map<String, dynamic>> getUserVouchers(String username) async {
+  static Future<List<dynamic>> getUserVouchers(String username) async {
     try {
       final res = await http.get(
         Uri.parse("$baseUrl/users/$username/vouchers"),
@@ -293,7 +307,11 @@ class ApiService {
       );
 
       if (res.statusCode == 200) {
-        return jsonDecode(res.body);
+        final data = jsonDecode(res.body);
+        if (data is Map && data.containsKey('vouchers')) {
+          return data['vouchers'];
+        }
+        return [];
       } else if (res.statusCode == 503) {
         throw Exception("Database không khả dụng. Vui lòng thử lại sau.");
       } else {
@@ -603,19 +621,28 @@ class ApiService {
     );
   }
 
-  // ================== GET CURRENT USER INFO ==================
-  static Future<Map<String, dynamic>> getCurrentUserInfo() async {
+  // ================== CHECK USER PERMISSIONS ==================
+  static Future<Map<String, dynamic>> checkUserPermissions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final username = prefs.getString('username') ?? '';
 
       if (username.isEmpty) {
-        throw Exception("Chưa đăng nhập");
+        return {'isAdmin': false, 'isManager': false, 'role': 'user'};
       }
 
-      return await getUserByUsername(username);
+      final userInfo = await getUserByUsername(username);
+      if (userInfo == null) {
+        return {'isAdmin': false, 'isManager': false, 'role': 'user'};
+      }
+
+      return {
+        'isAdmin': userInfo['isAdmin'] ?? false,
+        'isManager': userInfo['isManager'] ?? false,
+        'role': userInfo['role'] ?? 'user',
+      };
     } catch (e) {
-      throw Exception("Không thể lấy thông tin user: ${e.toString()}");
+      return {'isAdmin': false, 'isManager': false, 'role': 'user'};
     }
   }
 }

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:green_rewards/features/admin/partner_create.dart';
 import 'package:green_rewards/features/other/partner_list.dart';
-
+import 'package:green_rewards/core/services/user_preferences.dart';
 import '../auth/login.dart';
 import '../../features/admin/voucher_create.dart';
 import '../admin/management.dart';
@@ -9,8 +10,37 @@ import '../scan/qrcode_scan.dart';
 import '../other/contact.dart';
 import '../admin/voucher_cotroll.dart';
 
-class AdminHome extends StatelessWidget {
+class AdminHome extends StatefulWidget {
   const AdminHome({super.key});
+
+  @override
+  State<AdminHome> createState() => _AdminHomeState();
+}
+
+class _AdminHomeState extends State<AdminHome> {
+  String currentRole = 'admin';
+  bool isAdmin = true;
+  bool isManager = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final role = await UserPreferences.getRole();
+      final isAdminValue = await UserPreferences.isAdmin();
+      setState(() {
+        currentRole = role;
+        isAdmin = isAdminValue;
+        isManager = role == 'manager';
+      });
+    } catch (e) {
+      print('Lỗi khi load role: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,13 +75,26 @@ class AdminHome extends StatelessWidget {
             /// TITLE
             Expanded(
               child: Center(
-                child: Text(
-                  'Admin Dashboard',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade700,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isAdmin ? 'Admin Dashboard' : 'Manager Dashboard',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                    Text(
+                      '(${currentRole.toUpperCase()})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isAdmin ? Colors.red : Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -63,7 +106,10 @@ class AdminHome extends StatelessWidget {
           IconButton(
             tooltip: 'Đăng xuất',
             icon: const Icon(Icons.logout, color: Colors.green),
-            onPressed: () {
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (!mounted) return;
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -123,7 +169,7 @@ class AdminHome extends StatelessWidget {
                     _adminActionButton(
                       icon: Icons.people,
                       label: 'Quản lý User',
-                      color: Colors.lightGreen,
+                      color: isAdmin ? Colors.lightGreen : Colors.blue,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -157,6 +203,21 @@ class AdminHome extends StatelessWidget {
                         );
                       },
                     ),
+                    // Thêm nút tạo partner nếu cần
+                    if (isAdmin)
+                      _adminActionButton(
+                        icon: Icons.add_business,
+                        label: 'Tạo Partner',
+                        color: Colors.orange,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PartnerCreate(),
+                            ),
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -182,21 +243,30 @@ class AdminHome extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: const [
-          Icon(Icons.eco, size: 48, color: Colors.green),
-          SizedBox(width: 16),
+        children: [
+          Icon(
+            isAdmin ? Icons.admin_panel_settings : Icons.supervisor_account,
+            size: 48,
+            color: isAdmin ? Colors.red : Colors.blue,
+          ),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Chào mừng Admin 🌱',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  isAdmin ? 'Chào mừng Admin 🌱' : 'Chào mừng Manager 🌱',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  'Quản lý hệ thống Green Rewards',
-                  style: TextStyle(color: Colors.grey),
+                  isAdmin
+                      ? 'Quản lý toàn bộ hệ thống'
+                      : 'Quản lý người dùng và voucher',
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ],
             ),

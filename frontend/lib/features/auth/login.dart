@@ -58,6 +58,7 @@ class _LoginPageState extends State<LoginPage> {
       final email = res["email"] ?? "";
       final phone = res["phone"] ?? "";
       final isAdmin = res["isAdmin"] ?? false;
+      final isManager = res["isManager"] ?? false; // Thêm field isManager
       final point = res["point"] ?? 0;
 
       // 🔥 LƯU ĐẦY ĐỦ THÔNG TIN NGƯỜI DÙNG VÀO SHAREDPREFERENCES
@@ -68,12 +69,15 @@ class _LoginPageState extends State<LoginPage> {
       await prefs.setString('phone', phone);
       await prefs.setString('role', role);
       await prefs.setBool('is_admin', isAdmin);
+      await prefs.setBool('is_manager', isManager); // Lưu isManager
       await prefs.setInt('point', point);
 
       // 🔥 FIX TIẾP (sau await)
       if (!mounted) return;
 
-      if (role == "admin") {
+      // Xử lý điều hướng theo role
+      // ✅ CHỈNH SỬA: Cả admin và manager đều vào AdminHome
+      if (role == "admin" || role == "manager") {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const AdminHome()),
@@ -85,7 +89,7 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         setState(() {
-          error = "Role không hợp lệ";
+          error = "Role không hợp lệ: $role";
         });
       }
     } catch (e) {
