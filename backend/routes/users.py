@@ -132,15 +132,47 @@ def reset_user_point(user_id):
         if user.get("role") == "admin":
             return json_error("Không thể reset điểm của admin", 400)
         
+        # Lấy điểm hiện tại
+        current_point = user.get("point", 0)
+        
+        # Nếu điểm đã là 0 thì không cần reset
+        if current_point <= 0:
+            return json_error("Người dùng này không có điểm để reset", 400)
+        
+        # Lấy thông tin từ request: ai reset và lý do
+        data = request.json or {}
+        reset_by = data.get("reset_by", "system")  # Mặc định là system nếu không có
+        reason = data.get("reason", "Hệ thống lỗi nên điểm trả về 0")
+        
+        # Tạo entry lịch sử
+        history_entry = {
+            "date": datetime.now().isoformat(),
+            "type": "reset",
+            "point": -current_point,  # Số điểm bị trừ đi (số âm)
+            "message": reason,
+            "reset_by": reset_by,
+            "old_point": current_point,
+            "new_point": 0
+        }
+        
+        # Cập nhật điểm về 0 và thêm vào lịch sử
         result = users.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"point": 0}}
+            {
+                "$set": {"point": 0},
+                "$push": {"history": history_entry}
+            }
         )
         
         if result.modified_count == 1:
-            return jsonify({"message": "Reset điểm thành công"}), 200
+            return jsonify({
+                "message": "Reset điểm thành công",
+                "old_point": current_point,
+                "new_point": 0,
+                "history_added": True
+            }), 200
         else:
-            return json_error("User không tồn tại", 404)
+            return json_error("User không tồn tại hoặc không có thay đổi", 404)
     except Exception as e:
         return json_error(f"Lỗi: {str(e)}", 500)
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // THÊM DÒNG NÀY
 import 'package:green_rewards/core/services/api_service.dart';
 import 'package:green_rewards/core/services/user_preferences.dart';
 import '../user/history_point.dart';
@@ -286,7 +287,7 @@ class _ManagementState extends State<Management> {
       builder: (_) => AlertDialog(
         title: const Text('Reset điểm'),
         content: Text(
-          'Bạn muốn đưa điểm của "$username" về 0?\nHiện tại: $currentPoint điểm',
+          'Bạn muốn đưa điểm của "$username" về 0?\nHiện tại: $currentPoint điểm\n\nLý do: Hệ thống lỗi nên điểm trả về 0',
         ),
         actions: [
           TextButton(
@@ -312,7 +313,15 @@ class _ManagementState extends State<Management> {
     );
 
     try {
-      final success = await ApiService.resetPoint(userId);
+      // Lấy thông tin người đang đăng nhập
+      final prefs = await SharedPreferences.getInstance();
+      final currentUsername = prefs.getString('username') ?? 'system';
+
+      // GỌI API VỚI THAM SỐ RESET_BY
+      final success = await ApiService.resetPoint(
+        userId,
+        resetBy: currentUsername,
+      );
 
       if (!mounted) return;
       Navigator.pop(context); // Đóng loading
@@ -321,7 +330,9 @@ class _ManagementState extends State<Management> {
         reload();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã reset điểm cho $username thành công'),
+            content: Text(
+              'Đã reset $currentPoint điểm cho $username thành công',
+            ),
             backgroundColor: Colors.green,
           ),
         );

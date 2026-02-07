@@ -84,7 +84,7 @@ class _HistoryPointState extends State<HistoryPoint> {
   String formatPoint(int point, String? type) {
     if (type == 'reset') return 'Về 0';
     if (point > 0) return '+$point';
-    return '$point'; // Số âm sẽ hiển thị với dấu -
+    return '$point';
   }
 
   String getTypeTitle(String? type) {
@@ -107,15 +107,14 @@ class _HistoryPointState extends State<HistoryPoint> {
     final message = history['message'] ?? '';
     final partner = history['partner'] ?? '';
     final resetBy = history['reset_by'] ?? '';
+    final oldPoint = history['old_point'] ?? 0;
+    final newPoint = history['new_point'] ?? 0;
 
     if (type == 'reset') {
-      final point = history['point'] is num
-          ? (history['point'] as num).toInt()
-          : 0;
       if (resetBy.isNotEmpty) {
-        return 'Đã reset $point điểm (bởi $resetBy)';
+        return 'Đã reset $oldPoint điểm về 0 (bởi $resetBy) - Lý do: $message';
       }
-      return 'Đã reset $point điểm';
+      return 'Đã reset $oldPoint điểm về 0 - Lý do: $message';
     } else if (type == 'add' && partner.isNotEmpty) {
       return 'Tích điểm từ $partner';
     } else if (type == 'exchange' && partner.isNotEmpty) {
@@ -184,7 +183,7 @@ class _HistoryPointState extends State<HistoryPoint> {
     final int totalPoint = user['point'] is num
         ? (user['point'] as num).toInt()
         : 0;
-    final List history = historyRaw.reversed.toList(); // Mới nhất lên đầu
+    final List history = historyRaw.reversed.toList();
 
     if (history.isEmpty) {
       return Center(
@@ -208,7 +207,6 @@ class _HistoryPointState extends State<HistoryPoint> {
       );
     }
 
-    // Phân loại lịch sử
     final addHistory = history.where((h) => h['type'] == 'add').toList();
     final exchangeHistory = history
         .where((h) => h['type'] == 'exchange')
@@ -219,7 +217,6 @@ class _HistoryPointState extends State<HistoryPoint> {
 
     return Column(
       children: [
-        // Header với tổng điểm
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(24),
@@ -275,7 +272,6 @@ class _HistoryPointState extends State<HistoryPoint> {
           ),
         ),
 
-        // Tabs hoặc danh sách lịch sử
         Expanded(
           child: DefaultTabController(
             length: 3,
@@ -297,13 +293,8 @@ class _HistoryPointState extends State<HistoryPoint> {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      // Tab TẤT CẢ
                       _buildHistoryList(history, 'Tất cả giao dịch'),
-
-                      // Tab TÍCH ĐIỂM
                       _buildHistoryList(addHistory, 'Lịch sử tích điểm'),
-
-                      // Tab ĐỔI VOUCHER
                       _buildHistoryList(exchangeHistory, 'Lịch sử đổi voucher'),
                     ],
                   ),
@@ -344,6 +335,8 @@ class _HistoryPointState extends State<HistoryPoint> {
         final billCode = h['bill'] ?? '';
         final time = h['time'] ?? '';
         final resetBy = h['reset_by'] ?? '';
+        final oldPoint = h['old_point'] ?? 0;
+        final newPoint = h['new_point'] ?? 0;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -362,7 +355,6 @@ class _HistoryPointState extends State<HistoryPoint> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header với loại giao dịch
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -401,13 +393,11 @@ class _HistoryPointState extends State<HistoryPoint> {
                 ),
               ),
 
-              // Chi tiết giao dịch
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Hiển thị partner nếu có
                     if (partner.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -432,7 +422,6 @@ class _HistoryPointState extends State<HistoryPoint> {
                         ),
                       ),
 
-                    // Hiển thị mã bill nếu có
                     if (billCode.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -454,7 +443,6 @@ class _HistoryPointState extends State<HistoryPoint> {
                         ),
                       ),
 
-                    // Thời gian
                     Row(
                       children: [
                         Icon(
@@ -475,7 +463,6 @@ class _HistoryPointState extends State<HistoryPoint> {
                       ],
                     ),
 
-                    // Thông báo
                     if (h['message'] != null && h['message'].isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -489,19 +476,36 @@ class _HistoryPointState extends State<HistoryPoint> {
                         ),
                       ),
 
-                    // Hiển thị người reset nếu có
-                    if (type == 'reset' && resetBy.isNotEmpty)
+                    if (type == 'reset')
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.person, size: 14, color: Colors.grey),
-                            const SizedBox(width: 4),
+                            if (resetBy.isNotEmpty)
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.person,
+                                    size: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Bởi: $resetBy',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             Text(
-                              'Bởi: $resetBy',
+                              'Điểm cũ: $oldPoint → Điểm mới: $newPoint',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.grey,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],

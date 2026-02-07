@@ -151,11 +151,26 @@ class ApiService {
   }
 
   // ================== RESET POINT ==================
-  static Future<bool> resetPoint(String userId) async {
+  static Future<bool> resetPoint(
+    String userId, {
+    String? resetBy,
+    String? reason,
+  }) async {
     try {
+      // Lấy thông tin người reset nếu không được cung cấp
+      String resetByValue = resetBy ?? '';
+      if (resetByValue.isEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        resetByValue = prefs.getString('username') ?? 'system';
+      }
+
+      // Lý do mặc định
+      String reasonValue = reason ?? 'Hệ thống lỗi nên điểm trả về 0';
+
       final res = await http.put(
         Uri.parse("$baseUrl/users/$userId/reset-point"),
         headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"reset_by": resetByValue, "reason": reasonValue}),
       );
 
       return res.statusCode == 200;
