@@ -1,5 +1,5 @@
 from pymongo import MongoClient
-import gridfs
+import gridfs  # Đảm bảo import gridfs
 import os
 
 MONGO_URI = "mongodb+srv://locnguyen2512cn_db_user:GreenRewards123@greenrewards.lqkojxf.mongodb.net/green_rewards?retryWrites=true&w=majority"
@@ -22,7 +22,7 @@ except Exception as e:
     db = None
 
 # Collections - chỉ tạo nếu kết nối thành công
-if db is not None:  # ĐÃ SỬA: thay if db: thành if db is not None:
+if db is not None:
     users = db["users"]
     vouchers = db["vouchers"]
     user_vouchers = db["user_vouchers"]

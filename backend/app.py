@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify  # Thêm jsonify vào đây
 from flask_cors import CORS
 import os
 
@@ -12,7 +12,7 @@ from routes.images import images_bp
 
 # Import database và utils
 from models.database import users, check_database
-from utils.helpers import hash_password
+from utils.helpers import hash_password, safe_int
 from datetime import datetime
 
 app = Flask(__name__)
@@ -27,6 +27,30 @@ app.register_blueprint(vouchers_bp)
 app.register_blueprint(partners_bp)
 app.register_blueprint(scan_bp)
 app.register_blueprint(images_bp)
+
+# =========================
+# ROOT ENDPOINT (optional)
+# =========================
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "message": "Green Rewards API is running",
+        "endpoints": {
+            "health": "/health (GET)",
+            "auth": {
+                "login": "/login (POST)",
+                "register": "/register (POST)"
+            },
+            "users": {
+                "get_all_users": "/users (GET)",
+                "get_user": "/users/<username> (GET)"
+            },
+            "vouchers": {
+                "get_vouchers": "/vouchers (GET)",
+                "get_user_vouchers": "/users/<username>/vouchers (GET)"
+            }
+        }
+    })
 
 # =========================
 # HEALTH CHECK ENDPOINT

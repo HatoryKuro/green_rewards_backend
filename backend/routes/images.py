@@ -1,9 +1,10 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file  # Đảm bảo có jsonify
 from models.database import partners, fs, check_database
 from utils.helpers import json_error
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
 from io import BytesIO
+import gridfs
 
 images_bp = Blueprint('images', __name__)
 

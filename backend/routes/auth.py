@@ -1,6 +1,6 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify  # Đảm bảo có jsonify
 from models.database import users, check_database
-from utils.helpers import hash_password, json_error
+from utils.helpers import hash_password, safe_int, json_error  # Đảm bảo có safe_int
 from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
