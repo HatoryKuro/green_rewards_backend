@@ -1,19 +1,16 @@
 from flask import Blueprint, request, jsonify
-from database import users
+from models.database import users, check_database
+from utils.helpers import safe_int, json_error
 from bson.objectid import ObjectId
 from datetime import datetime
-from utils.helpers import safe_int, safe_str
 
 users_bp = Blueprint('users', __name__)
-
-def check_database():
-    return users is not None
 
 @users_bp.route("/users", methods=["GET"])
 def get_all_users():
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         # Lấy tất cả user (bao gồm cả admin và manager)
@@ -40,13 +37,13 @@ def get_all_users():
         
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)
 
 @users_bp.route("/users/<user_id>/role", methods=["PUT"])
 def update_user_role(user_id):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         data = request.json
@@ -54,18 +51,18 @@ def update_user_role(user_id):
         
         # Kiểm tra role hợp lệ
         if not new_role or new_role not in ["user", "manager", "admin"]:
-            return jsonify({"error": "Role không hợp lệ. Chọn user, manager hoặc admin"}), 400
+            return json_error("Role không hợp lệ. Chọn user, manager hoặc admin", 400)
         
         # Tìm user cần cập nhật
         user = users.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return json_error("User không tồn tại", 404)
         
         current_role = user.get("role", "user")
         
         # Không cho phép thay đổi role của admin khác (chỉ admin có thể thay đổi)
         if current_role == "admin" and new_role != "admin":
-            return jsonify({"error": "Không thể thay đổi role của admin"}), 400
+            return json_error("Không thể thay đổi role của admin", 400)
         
         # Cập nhật role
         isAdmin = new_role == "admin"
@@ -90,50 +87,50 @@ def update_user_role(user_id):
                 "isManager": isManager
             }), 200
         else:
-            return jsonify({"error": "Cập nhật thất bại hoặc không có thay đổi"}), 400
+            return json_error("Cập nhật thất bại hoặc không có thay đổi", 400)
             
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)
 
 @users_bp.route("/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         # Tìm user cần xóa
         user = users.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return json_error("User không tồn tại", 404)
         
         # Không cho xóa admin
         if user.get("role") == "admin":
-            return jsonify({"error": "Không thể xóa tài khoản admin"}), 400
+            return json_error("Không thể xóa tài khoản admin", 400)
         
         result = users.delete_one({"_id": ObjectId(user_id)})
         if result.deleted_count == 1:
             return jsonify({"message": "Xóa user thành công"}), 200
         else:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return json_error("User không tồn tại", 404)
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)
 
 @users_bp.route("/users/<user_id>/reset-point", methods=["PUT"])
 def reset_user_point(user_id):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         # Kiểm tra user có tồn tại không
         user = users.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return json_error("User không tồn tại", 404)
         
         # Không cho reset điểm của admin
         if user.get("role") == "admin":
-            return jsonify({"error": "Không thể reset điểm của admin"}), 400
+            return json_error("Không thể reset điểm của admin", 400)
         
         result = users.update_one(
             {"_id": ObjectId(user_id)},
@@ -143,20 +140,21 @@ def reset_user_point(user_id):
         if result.modified_count == 1:
             return jsonify({"message": "Reset điểm thành công"}), 200
         else:
-            return jsonify({"error": "User không tồn tại"}), 404
+            return json_error("User không tồn tại", 404)
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)
 
 @users_bp.route("/users/<username>", methods=["GET"])
 def get_user_by_username(username):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         user = users.find_one({"username": username})
         if not user:
-            return jsonify({"error": "User không tồn tại"}), 404        
+            return json_error("User không tồn tại", 404)
+        
         role = user.get("role", "user")
         isAdmin = role == "admin"
         isManager = role in ["admin", "manager"]
@@ -174,4 +172,4 @@ def get_user_by_username(username):
             "usedBills": user.get("usedBills", [])
         }), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)

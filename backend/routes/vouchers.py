@@ -1,26 +1,23 @@
 from flask import Blueprint, request, jsonify
-from database import vouchers, user_vouchers, users
+from models.database import vouchers, user_vouchers, users, check_database
+from utils.helpers import safe_int, json_error
 from bson.objectid import ObjectId
 from datetime import datetime
-from utils.helpers import safe_int
 
 vouchers_bp = Blueprint('vouchers', __name__)
-
-def check_database():
-    return vouchers is not None and user_vouchers is not None and users is not None
 
 @vouchers_bp.route("/admin/vouchers", methods=["POST"])
 def create_voucher():
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     data = request.json
     
     required_fields = ["partner", "point", "maxPerUser", "expired"]
     for field in required_fields:
         if not data.get(field):
-            return jsonify({"error": f"Thiếu trường {field}"}), 400
+            return json_error(f"Thiếu trường {field}", 400)
     
     new_voucher = {
         "partner": data["partner"],
@@ -38,7 +35,7 @@ def create_voucher():
             "voucher_id": str(result.inserted_id)
         }), 201
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)
 
 @vouchers_bp.route("/vouchers", methods=["GET"])
 def get_available_vouchers():
@@ -62,33 +59,33 @@ def get_available_vouchers():
         
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)
 
 @vouchers_bp.route("/users/<username>/exchange-voucher", methods=["POST"])
 def exchange_voucher(username):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     data = request.json
     voucher_id = data.get("voucher_id")
     
     if not voucher_id:
-        return jsonify({"error": "Thiếu voucher_id"}), 400
+        return json_error("Thiếu voucher_id", 400)
     
     # Kiểm tra user
     user = users.find_one({"username": username})
     if not user:
-        return jsonify({"error": "User không tồn tại"}), 404
+        return json_error("User không tồn tại", 404)
     
     # Kiểm tra voucher
     voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
     if not voucher:
-        return jsonify({"error": "Voucher không tồn tại"}), 404
+        return json_error("Voucher không tồn tại", 404)
     
     # Kiểm tra điểm
     if user.get("point", 0) < voucher["point"]:
-        return jsonify({"error": "Không đủ điểm để đổi"}), 400
+        return json_error("Không đủ điểm để đổi", 400)
     
     # Kiểm tra đã đổi voucher này chưa
     exchanged_count = user_vouchers.count_documents({
@@ -96,7 +93,7 @@ def exchange_voucher(username):
         "voucher_id": voucher_id
     })
     if exchanged_count >= voucher["maxPerUser"]:
-        return jsonify({"error": "Đã đạt giới hạn đổi voucher này"}), 400
+        return json_error("Đã đạt giới hạn đổi voucher này", 400)
     
     # Trừ điểm
     new_point = user.get("point", 0) - voucher["point"]
@@ -145,13 +142,13 @@ def get_user_vouchers(username):
         
         return jsonify({"vouchers": result}), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)
 
 @vouchers_bp.route("/vouchers/<voucher_id>/use", methods=["PUT"])
 def mark_voucher_used(voucher_id):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         result = user_vouchers.update_one(
@@ -162,9 +159,9 @@ def mark_voucher_used(voucher_id):
         if result.modified_count == 1:
             return jsonify({"message": "Đánh dấu voucher đã sử dụng thành công"}), 200
         else:
-            return jsonify({"error": "Voucher không tồn tại"}), 404
+            return json_error("Voucher không tồn tại", 404)
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)
 
 @vouchers_bp.route("/admin/vouchers", methods=["GET"])
 def get_all_vouchers():
@@ -189,18 +186,18 @@ def get_all_vouchers():
         
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)
 
 @vouchers_bp.route("/voucher/<voucher_id>", methods=["GET"])
 def get_voucher_detail(voucher_id):
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     try:
         voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
         if not voucher:
-            return jsonify({"error": "Voucher không tồn tại"}), 404
+            return json_error("Voucher không tồn tại", 404)
         
         return jsonify({
             "_id": str(voucher["_id"]),
@@ -211,7 +208,7 @@ def get_voucher_detail(voucher_id):
             "status": voucher["status"]
         }), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+        return json_error(f"Lỗi: {str(e)}", 500)
 
 @vouchers_bp.route("/admin/vouchers/stats", methods=["GET"])
 def get_voucher_stats():
@@ -237,4 +234,4 @@ def get_voucher_stats():
             "used": used
         }), 200
     except Exception as e:
-        return jsonify({"error": f"Lỗi database: {str(e)}"}), 500
+        return json_error(f"Lỗi database: {str(e)}", 500)

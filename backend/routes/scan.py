@@ -1,24 +1,22 @@
 from flask import Blueprint, request, jsonify
-from database import users
+from models.database import users, check_database
+from utils.helpers import safe_int, json_error
 from datetime import datetime
 
 scan_bp = Blueprint('scan', __name__)
-
-def check_database():
-    return users is not None
 
 @scan_bp.route("/scan/add-point", methods=["POST"])
 def add_point_by_qr():
     # Kiểm tra database
     if not check_database():
-        return jsonify({"error": "Database không khả dụng"}), 503
+        return json_error("Database không khả dụng", 503)
     
     data = request.json
     
     required_fields = ["username", "partner", "billCode", "point"]
     for field in required_fields:
         if not data.get(field):
-            return jsonify({"error": f"Thiếu trường {field}"}), 400
+            return json_error(f"Thiếu trường {field}", 400)
     
     username = data["username"]
     partner = data["partner"]
@@ -28,11 +26,11 @@ def add_point_by_qr():
     # Kiểm tra user
     user = users.find_one({"username": username})
     if not user:
-        return jsonify({"error": "User không tồn tại"}), 404
+        return json_error("User không tồn tại", 404)
     
     # Kiểm tra bill code đã dùng chưa
     if bill_code in user.get("usedBills", []):
-        return jsonify({"error": "Hóa đơn đã được sử dụng"}), 400
+        return json_error("Hóa đơn đã được sử dụng", 400)
     
     # Cập nhật điểm và lịch sử
     new_point = user.get("point", 0) + point

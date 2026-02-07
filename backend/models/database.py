@@ -77,3 +77,7 @@ else:
     # Tạo các biến None để tránh lỗi import
     users = vouchers = user_vouchers = partners = fs = None
     print("⚠ Chạy ở chế độ không có database")
+
+def check_database():
+    """Kiểm tra xem database có kết nối không"""
+    return users is not None
