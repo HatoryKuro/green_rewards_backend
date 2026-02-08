@@ -13,7 +13,6 @@ class CreateVoucher extends StatefulWidget {
 class _CreateVoucherState extends State<CreateVoucher> {
   final pointController = TextEditingController();
   final limitController = TextEditingController();
-  final billCodeController = TextEditingController();
 
   String selectedPartner = '';
   DateTime? expiredDate;
@@ -24,8 +23,8 @@ class _CreateVoucherState extends State<CreateVoucher> {
   bool isUnlimited = false;
   String partnerError = '';
   String pointError = '';
-  String billCodeError = '';
   String dateError = '';
+  String limitError = '';
 
   double discountAmount = 0.0;
 
@@ -36,7 +35,7 @@ class _CreateVoucherState extends State<CreateVoucher> {
 
     pointController.addListener(_calculateDiscount);
     pointController.addListener(_validatePoint);
-    billCodeController.addListener(_validateBillCode);
+    limitController.addListener(_validateLimit);
   }
 
   void _validatePoint() {
@@ -52,15 +51,21 @@ class _CreateVoucherState extends State<CreateVoucher> {
     }
   }
 
-  void _validateBillCode() {
-    final billCode = billCodeController.text;
-    if (billCode.isNotEmpty && billCode.length > 9) {
-      setState(() {
-        billCodeError = 'Mã Bill tối đa 9 ký tự';
-      });
+  void _validateLimit() {
+    if (!isUnlimited && limitController.text.isNotEmpty) {
+      final limit = int.tryParse(limitController.text) ?? 0;
+      if (limit <= 0) {
+        setState(() {
+          limitError = 'Số lần đổi phải lớn hơn 0';
+        });
+      } else {
+        setState(() {
+          limitError = '';
+        });
+      }
     } else {
       setState(() {
-        billCodeError = '';
+        limitError = '';
       });
     }
   }
@@ -163,7 +168,6 @@ class _CreateVoucherState extends State<CreateVoucher> {
     final maxPerUser = isUnlimited
         ? 0
         : (int.tryParse(limitController.text) ?? 0);
-    final billCode = billCodeController.text.trim();
 
     if (selectedPartner.isEmpty) {
       showMsg('Vui lòng chọn nhà đối tác');
@@ -175,9 +179,16 @@ class _CreateVoucherState extends State<CreateVoucher> {
       return;
     }
 
-    if (!isUnlimited && maxPerUser <= 0) {
-      showMsg('Vui lòng nhập số lần đổi hợp lệ (lớn hơn 0)');
-      return;
+    // VALIDATION ĐÃ SỬA: Chỉ kiểm tra khi không phải unlimited
+    if (!isUnlimited) {
+      if (limitController.text.isEmpty) {
+        showMsg('Vui lòng nhập số lần đổi');
+        return;
+      }
+      if (maxPerUser <= 0) {
+        showMsg('Số lần đổi phải lớn hơn 0');
+        return;
+      }
     }
 
     if (expiredDate == null) {
@@ -188,11 +199,6 @@ class _CreateVoucherState extends State<CreateVoucher> {
     final minDate = DateTime.now().add(const Duration(days: 1));
     if (expiredDate!.isBefore(minDate)) {
       showMsg('Voucher phải tồn tại ít nhất 24h (chọn từ ngày mai trở đi)');
-      return;
-    }
-
-    if (billCode.isNotEmpty && billCode.length > 9) {
-      showMsg('Mã Bill tối đa 9 ký tự');
       return;
     }
 
@@ -217,13 +223,9 @@ class _CreateVoucherState extends State<CreateVoucher> {
             const SizedBox(height: 4),
             Text(
               isUnlimited
-                  ? '📝 Giới hạn: KHÔNG GIỚI HẠN (đổi liên tục)'
+                  ? '📝 Giới hạn: KHÔNG GIỚI HẠN (đổi liên tục) - maxPerUser=0'
                   : '📝 Giới hạn: $maxPerUser lần/user',
             ),
-            if (billCode.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text('🏷️ Mã Bill: $billCode'),
-            ],
             const SizedBox(height: 4),
             Text(
               '📅 Hết hạn: ${expiredDate!.day}/${expiredDate!.month}/${expiredDate!.year}',
@@ -252,13 +254,22 @@ class _CreateVoucherState extends State<CreateVoucher> {
     try {
       final expiredDateString = expiredDate!.toIso8601String();
 
+      // DEBUG: In thông tin sẽ gửi
+      print('======= DEBUG VOUCHER CREATION =======');
+      print('Partner: $selectedPartner');
+      print('Point: $point');
+      print('Max Per User: $maxPerUser (Unlimited: $isUnlimited)');
+      print('Expired: $expiredDateString');
+      print('=====================================');
+
       final result = await ApiService.createVoucher(
         partner: selectedPartner,
         point: point,
         maxPerUser: isUnlimited ? 0 : maxPerUser,
         expired: expiredDateString,
-        billCode: billCode.isNotEmpty ? billCode : null,
       );
+
+      print('✅ Voucher created successfully: $result');
 
       showMsg(
         '🎉 Phát hành voucher thành công! ID: ${result['voucher_id'] ?? 'N/A'}',
@@ -266,21 +277,39 @@ class _CreateVoucherState extends State<CreateVoucher> {
 
       pointController.clear();
       limitController.clear();
-      billCodeController.clear();
       setState(() {
         expiredDate = null;
         discountAmount = 0.0;
         isUnlimited = false;
         pointError = '';
-        billCodeError = '';
         dateError = '';
+        limitError = '';
       });
     } catch (e) {
       String errorMessage = 'Lỗi khi phát hành voucher';
       if (e is Exception) {
         errorMessage = e.toString().replaceAll('Exception: ', '');
+
+        // Hiển thị chi tiết lỗi để debug
+        if (errorMessage.contains('Thiếu trường maxPerUser')) {
+          errorMessage +=
+              '\n\n🔍 Gợi ý sửa lỗi:\n'
+              '1. Kiểm tra backend đã được deploy với code mới chưa\n'
+              '2. Đảm bảo field "maxPerUser" được gửi (kể cả giá trị 0)\n'
+              '3. Kiểm tra kết nối API';
+        } else if (errorMessage.contains('Lỗi kết nối')) {
+          errorMessage +=
+              '\n\n🔍 Kiểm tra:\n'
+              '1. Máy chủ có đang hoạt động không\n'
+              '2. Kết nối internet\n'
+              '3. URL API: ${ApiService.baseUrl}';
+        }
       }
-      showMsg('❌ $errorMessage');
+
+      // Hiển thị dialog lỗi chi tiết
+      _showErrorDialog(errorMessage);
+
+      print('❌ Voucher creation error: $e');
     } finally {
       setState(() {
         isCreatingVoucher = false;
@@ -288,11 +317,138 @@ class _CreateVoucherState extends State<CreateVoucher> {
     }
   }
 
+  void _showErrorDialog(String errorMessage) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Lỗi Phát Hành Voucher'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(errorMessage, style: const TextStyle(fontSize: 14)),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Thông tin gửi đi:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text('• Đối tác: $selectedPartner'),
+              Text('• Điểm: ${pointController.text}'),
+              Text(
+                '• Giới hạn: ${isUnlimited ? "Không giới hạn (0)" : limitController.text}',
+              ),
+              if (expiredDate != null)
+                Text(
+                  '• Hết hạn: ${expiredDate!.day}/${expiredDate!.month}/${expiredDate!.year}',
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+          if (errorMessage.contains('maxPerUser'))
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showDebugInfo();
+              },
+              child: const Text('Xem Chi Tiết Debug'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showDebugInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Thông Tin Debug'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Kiểm tra backend:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text('1. Đảm bảo code voucher.py đã được cập nhật:'),
+              const Padding(
+                padding: EdgeInsets.only(left: 16),
+                child: Text(
+                  '• Sửa: if not data.get(field) → if field not in data',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text('2. Restart server backend'),
+              const SizedBox(height: 8),
+              const Text('3. Kiểm tra endpoint:'),
+              Text(
+                'POST ${ApiService.baseUrl}/admin/vouchers',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Dữ liệu gửi đi:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  jsonEncode({
+                    "partner": selectedPartner,
+                    "point": int.tryParse(pointController.text) ?? 0,
+                    "maxPerUser": isUnlimited
+                        ? 0
+                        : (int.tryParse(limitController.text) ?? 0),
+                    "expired": expiredDate?.toIso8601String(),
+                  }),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void showMsg(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: msg.contains('❌') ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -303,6 +459,31 @@ class _CreateVoucherState extends State<CreateVoucher> {
       appBar: AppBar(
         title: const Text('Tạo Voucher'),
         backgroundColor: Colors.green[700],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Thông tin Voucher'),
+                  content: const Text(
+                    '• Đổi liên tục: maxPerUser = 0 (không giới hạn)\n'
+                    '• Giới hạn: maxPerUser > 0 (số lần/user)\n'
+                    '• Điểm tối thiểu: 500 = 10.000đ\n'
+                    '• Thời hạn: Ít nhất 24h từ thời điểm tạo',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Đóng'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -569,31 +750,6 @@ class _CreateVoucherState extends State<CreateVoucher> {
 
             const SizedBox(height: 16),
 
-            /// MÃ BILL INPUT
-            const Text(
-              'Mã Bill (tùy chọn)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: billCodeController,
-              maxLength: 9,
-              decoration: InputDecoration(
-                hintText: 'Nhập mã Bill (tối đa 9 ký tự)',
-                border: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: billCodeError.isNotEmpty ? Colors.red : Colors.grey,
-                  ),
-                ),
-                errorText: billCodeError.isNotEmpty ? billCodeError : null,
-                errorStyle: const TextStyle(color: Colors.red),
-                prefixIcon: const Icon(Icons.receipt, color: Colors.blue),
-                counterText: '${billCodeController.text.length}/9',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
             /// LIMIT INPUT
             const Text(
               'Số lần mỗi user được đổi',
@@ -606,14 +762,60 @@ class _CreateVoucherState extends State<CreateVoucher> {
               enabled: !isUnlimited,
               decoration: InputDecoration(
                 hintText: 'Ví dụ: 1 / 2 / 5',
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: limitError.isNotEmpty ? Colors.red : Colors.grey,
+                  ),
+                ),
+                errorText: limitError.isNotEmpty ? limitError : null,
+                errorStyle: const TextStyle(color: Colors.red),
                 prefixIcon: const Icon(Icons.person, color: Colors.blue),
-                helperText: 'Giới hạn số lần mỗi user có thể đổi voucher này',
+                helperText: isUnlimited
+                    ? null
+                    : 'Giới hạn số lần mỗi user có thể đổi voucher này',
                 suffixIcon: isUnlimited
                     ? const Icon(Icons.lock, color: Colors.grey, size: 18)
                     : null,
               ),
             ),
+
+            // Thêm thông báo khi chọn đổi liên tục
+            if (isUnlimited)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.green[700],
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green[700],
+                            fontStyle: FontStyle.italic,
+                          ),
+                          children: const [
+                            TextSpan(text: 'Đổi liên tục: '),
+                            TextSpan(
+                              text: 'maxPerUser = 0',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            TextSpan(
+                              text:
+                                  ', user có thể đổi không giới hạn số lần cho đến khi hết hạn voucher',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             const SizedBox(height: 16),
 
@@ -632,6 +834,10 @@ class _CreateVoucherState extends State<CreateVoucher> {
                     onChanged: (value) {
                       setState(() {
                         isUnlimited = value ?? false;
+                        if (isUnlimited) {
+                          limitController.clear();
+                          limitError = '';
+                        }
                       });
                     },
                     activeColor: Colors.green,
@@ -651,7 +857,7 @@ class _CreateVoucherState extends State<CreateVoucher> {
                         const SizedBox(height: 2),
                         Text(
                           isUnlimited
-                              ? '✓ Voucher có thể đổi không giới hạn, chỉ mất khi Admin xoá'
+                              ? '✓ Voucher có thể đổi không giới hạn, chỉ mất khi Admin xoá (maxPerUser=0)'
                               : 'Voucher sẽ bị giới hạn số lần đổi theo thiết lập bên trên',
                           style: TextStyle(
                             fontSize: 12,
@@ -759,8 +965,8 @@ class _CreateVoucherState extends State<CreateVoucher> {
                           isLoadingPartners ||
                           partners.isEmpty ||
                           pointError.isNotEmpty ||
-                          billCodeError.isNotEmpty ||
-                          dateError.isNotEmpty)
+                          dateError.isNotEmpty ||
+                          limitError.isNotEmpty)
                       ? Colors.grey
                       : Colors.green[700],
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -774,8 +980,8 @@ class _CreateVoucherState extends State<CreateVoucher> {
                         isLoadingPartners ||
                         partners.isEmpty ||
                         pointError.isNotEmpty ||
-                        billCodeError.isNotEmpty ||
-                        dateError.isNotEmpty)
+                        dateError.isNotEmpty ||
+                        limitError.isNotEmpty)
                     ? null
                     : publishVoucher,
                 child: isCreatingVoucher
@@ -816,10 +1022,9 @@ class _CreateVoucherState extends State<CreateVoucher> {
   void dispose() {
     pointController.removeListener(_calculateDiscount);
     pointController.removeListener(_validatePoint);
-    billCodeController.removeListener(_validateBillCode);
+    limitController.removeListener(_validateLimit);
     pointController.dispose();
     limitController.dispose();
-    billCodeController.dispose();
     super.dispose();
   }
 }

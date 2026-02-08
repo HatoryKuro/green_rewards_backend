@@ -17,10 +17,8 @@ class _VoucherWalletState extends State<VoucherWallet>
   String currentUsername = '';
   int userPoints = 0;
 
-  List<dynamic> userVouchers = []; // Voucher user đã đổi
-  List<dynamic> availableVouchers = []; // Voucher có thể đổi
-  List<dynamic> insufficientVouchers = []; // Voucher chưa đủ điểm
-  List<dynamic> expiredVouchers = []; // Voucher hết hạn
+  List<dynamic> myVouchers = []; // Tất cả voucher đã đổi
+  List<dynamic> expiredVouchers = []; // Tất cả voucher không thể sử dụng
 
   bool isLoadingUser = true;
   bool isLoadingVouchers = false;
@@ -29,7 +27,7 @@ class _VoucherWalletState extends State<VoucherWallet>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadInitialData();
   }
 
@@ -37,10 +35,7 @@ class _VoucherWalletState extends State<VoucherWallet>
   /// KHỞI TẠO DỮ LIỆU BAN ĐẦU
   /// =======================
   Future<void> _loadInitialData() async {
-    // 1. Load user data trước
     await _loadUserData();
-
-    // 2. Sau đó mới load voucher data nếu có username
     if (mounted && currentUsername.isNotEmpty) {
       await _loadAllVoucherData();
     } else if (mounted) {
@@ -97,14 +92,12 @@ class _VoucherWalletState extends State<VoucherWallet>
     setState(() {
       isLoadingVouchers = true;
       errorMessage = '';
-      userVouchers = [];
-      availableVouchers = [];
-      insufficientVouchers = [];
+      myVouchers = [];
       expiredVouchers = [];
     });
 
     try {
-      // Load available vouchers from API
+      // Load available vouchers từ API
       final availableResponse = await ApiService.getAvailableVouchers();
 
       // Load user's vouchers (đã đổi)
@@ -114,54 +107,92 @@ class _VoucherWalletState extends State<VoucherWallet>
 
       final now = DateTime.now();
 
-      // Process available vouchers (for exchange)
+      // Tạo map để tra cứu nhanh thông tin voucher gốc
+      final Map<String, dynamic> availableVoucherMap = {};
       for (final voucher in availableResponse) {
         final voucherData = voucher as Map<String, dynamic>;
-        final point = voucherData['point'] is int
-            ? voucherData['point']
-            : int.tryParse(voucherData['point']?.toString() ?? '0') ?? 0;
-        final expired = voucherData['expired']?.toString() ?? '';
-        final maxPerUser = voucherData['maxPerUser'] is int
-            ? voucherData['maxPerUser']
-            : int.tryParse(voucherData['maxPerUser']?.toString() ?? '1') ?? 1;
-
-        // Parse expired date
-        DateTime? expiredDate;
-        try {
-          expiredDate = DateTime.parse(expired);
-        } catch (e) {
-          expiredDate = null;
-        }
-
-        final isExpired = expiredDate != null && expiredDate.isBefore(now);
-        final canExchange = userPoints >= point;
-
-        // Check if user has already exchanged this voucher max times
-        final voucherId = voucherData['_id']?.toString() ?? '';
-        final userExchangedCount = userVouchersResponse.where((v) {
-          final vData = v as Map<String, dynamic>;
-          final vId =
-              vData['voucher_id']?.toString() ?? vData['_id']?.toString() ?? '';
-          return vId == voucherId && vData['status']?.toString() != 'used';
-        }).length;
-
-        final reachedLimit = userExchangedCount >= maxPerUser;
-
-        if (isExpired || reachedLimit) {
-          expiredVouchers.add({
-            ...voucherData,
-            'reason': isExpired ? 'Hết hạn' : 'Đã đạt giới hạn',
-          });
-        } else if (!canExchange) {
-          insufficientVouchers.add(voucherData);
-        } else {
-          availableVouchers.add(voucherData);
+        final id = voucherData['_id']?.toString() ?? '';
+        if (id.isNotEmpty) {
+          availableVoucherMap[id] = voucherData;
         }
       }
 
-      // Process user's vouchers (đã đổi)
-      setState(() {
-        userVouchers = userVouchersResponse;
+      // Phân loại voucher
+      for (final userVoucher in userVouchersResponse) {
+        final voucherData = userVoucher as Map<String, dynamic>;
+        final voucherId = voucherData['voucher_id']?.toString() ?? '';
+        final status = voucherData['status']?.toString() ?? 'usable';
+
+        // Lấy thông tin voucher gốc
+        final originalVoucher = availableVoucherMap[voucherId];
+        if (originalVoucher != null) {
+          final expired = originalVoucher['expired']?.toString() ?? '';
+          final maxPerUser = originalVoucher['maxPerUser'] is int
+              ? originalVoucher['maxPerUser']
+              : int.tryParse(
+                      originalVoucher['maxPerUser']?.toString() ?? '1',
+                    ) ??
+                    1;
+
+          // Parse expired date
+          DateTime? expiredDate;
+          try {
+            expiredDate = DateTime.parse(expired);
+          } catch (e) {
+            expiredDate = null;
+          }
+
+          final isExpired = expiredDate != null && expiredDate.isBefore(now);
+
+          // Đếm số lần user đã đổi voucher này (chưa sử dụng)
+          final userExchangedCount = userVouchersResponse.where((v) {
+            final vData = v as Map<String, dynamic>;
+            final vId = vData['voucher_id']?.toString() ?? '';
+            return vId == voucherId && vData['status']?.toString() != 'used';
+          }).length;
+
+          final reachedLimit = userExchangedCount >= maxPerUser;
+
+          // Xác định lý do không thể sử dụng
+          String? reason;
+          if (status == 'used') {
+            reason = 'Đã sử dụng';
+          } else if (isExpired) {
+            reason = 'Hết hạn';
+          } else if (reachedLimit) {
+            reason = 'Đã đạt giới hạn';
+          }
+
+          // Thêm vào danh sách phù hợp
+          final voucherWithInfo = {
+            ...voucherData,
+            'original_voucher': originalVoucher,
+            'reason': reason,
+            'isExpired': isExpired,
+            'reachedLimit': reachedLimit,
+          };
+
+          if (reason != null) {
+            expiredVouchers.add(voucherWithInfo);
+          } else {
+            myVouchers.add(voucherWithInfo);
+          }
+        } else {
+          // Nếu không tìm thấy voucher gốc, coi như không thể sử dụng
+          expiredVouchers.add({
+            ...voucherData,
+            'reason': 'Voucher không tồn tại',
+          });
+        }
+      }
+
+      // Sắp xếp: voucher chưa sử dụng lên đầu
+      myVouchers.sort((a, b) {
+        final statusA = a['status']?.toString() ?? 'usable';
+        final statusB = b['status']?.toString() ?? 'usable';
+        if (statusA == 'used' && statusB != 'used') return 1;
+        if (statusA != 'used' && statusB == 'used') return -1;
+        return 0;
       });
 
       if (mounted) {
@@ -188,7 +219,6 @@ class _VoucherWalletState extends State<VoucherWallet>
   /// TÍNH TOÁN SỐ TIỀN ĐƯỢC GIẢM
   /// =======================
   double _calculateDiscountAmount(int point) {
-    // Công thức: 500 điểm = 10.000đ
     if (point > 0) {
       final multiplier = point / 500.0;
       return multiplier * 10000.0;
@@ -213,15 +243,15 @@ class _VoucherWalletState extends State<VoucherWallet>
     String voucherId,
     Map<String, dynamic> voucher,
   ) async {
-    final partner = voucher['partner']?.toString() ?? 'Unknown';
-    final point = voucher['point'] is int
-        ? voucher['point']
-        : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0;
-    final billCode = voucher['billCode']?.toString() ?? '';
+    final originalVoucher = voucher['original_voucher'] ?? {};
+    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
+    final point = originalVoucher['point'] is int
+        ? originalVoucher['point']
+        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
 
     // Show QR dialog
     final qrData =
-        'VOUCHER|$currentUsername|$point|$partner|${DateTime.now().toIso8601String()}|$billCode';
+        'VOUCHER|$currentUsername|$point|$partner|${DateTime.now().toIso8601String()}';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -265,13 +295,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                     '($point điểm)',
                     style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
-                  if (billCode.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Mã Bill: $billCode',
-                      style: const TextStyle(fontSize: 14, color: Colors.blue),
-                    ),
-                  ],
                   const SizedBox(height: 16),
                   QrImageView(
                     data: qrData,
@@ -364,18 +387,18 @@ class _VoucherWalletState extends State<VoucherWallet>
   }
 
   /// =======================
-  /// BUILD VOUCHER CARD FOR USER (ĐÃ ĐỔI)
+  /// BUILD VOUCHER CARD FOR MY VOUCHERS
   /// =======================
-  Widget _buildUserVoucherCard(Map<String, dynamic> voucher) {
-    final partner = voucher['partner']?.toString() ?? 'Unknown';
-    final point = voucher['point'] is int
-        ? voucher['point']
-        : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0;
+  Widget _buildMyVoucherCard(Map<String, dynamic> voucher) {
+    final originalVoucher = voucher['original_voucher'] ?? {};
+    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
+    final point = originalVoucher['point'] is int
+        ? originalVoucher['point']
+        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
     final status = voucher['status']?.toString() ?? 'usable';
     final exchangedAt = voucher['exchanged_at']?.toString() ?? '';
     final usedAt = voucher['used_at']?.toString();
     final voucherId = voucher['_id']?.toString() ?? '';
-    final billCode = voucher['billCode']?.toString() ?? '';
 
     // Tính số tiền được giảm
     final discountAmount = _calculateDiscountAmount(point);
@@ -486,21 +509,6 @@ class _VoucherWalletState extends State<VoucherWallet>
 
             const SizedBox(height: 12),
 
-            // Hiển thị mã Bill nếu có
-            if (billCode.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(Icons.receipt, size: 16, color: Colors.blue[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Mã Bill: $billCode',
-                    style: TextStyle(fontSize: 12, color: Colors.blue[600]),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-
             if (exchangedDate != null)
               Row(
                 children: [
@@ -578,35 +586,38 @@ class _VoucherWalletState extends State<VoucherWallet>
   }
 
   /// =======================
-  /// BUILD VOUCHER CARD FOR EXCHANGE (CÓ THỂ ĐỔI)
+  /// BUILD EXPIRED VOUCHER CARD
   /// =======================
-  Widget _buildExchangeVoucherCard(Map<String, dynamic> voucher) {
-    final partner = voucher['partner']?.toString() ?? 'Unknown';
-    final point = voucher['point'] is int
-        ? voucher['point']
-        : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0;
-    final maxPerUser = voucher['maxPerUser'] is int
-        ? voucher['maxPerUser']
-        : int.tryParse(voucher['maxPerUser']?.toString() ?? '1') ?? 1;
-    final expired = voucher['expired']?.toString() ?? '';
-    final voucherId = voucher['_id']?.toString() ?? '';
-    final billCode = voucher['billCode']?.toString() ?? '';
-    final reason = voucher['reason']?.toString();
+  Widget _buildExpiredVoucherCard(Map<String, dynamic> voucher) {
+    final originalVoucher = voucher['original_voucher'] ?? {};
+    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
+    final point = originalVoucher['point'] is int
+        ? originalVoucher['point']
+        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
+    final status = voucher['status']?.toString() ?? 'usable';
+    final reason = voucher['reason']?.toString() ?? 'Không thể sử dụng';
+    final exchangedAt = voucher['exchanged_at']?.toString() ?? '';
+    final usedAt = voucher['used_at']?.toString();
 
-    // Parse expired date
-    DateTime? expiredDate;
+    // Parse dates
+    DateTime? exchangedDate;
+    DateTime? usedDate;
+
     try {
-      expiredDate = DateTime.parse(expired);
+      exchangedDate = DateTime.parse(exchangedAt);
     } catch (e) {
-      expiredDate = null;
+      exchangedDate = null;
     }
 
-    final canExchange = userPoints >= point;
-    final daysLeft = expiredDate != null
-        ? expiredDate.difference(DateTime.now()).inDays
-        : 0;
-    final isExpired =
-        expiredDate != null && expiredDate.isBefore(DateTime.now());
+    if (usedAt != null && usedAt.isNotEmpty && usedAt != 'null') {
+      try {
+        usedDate = DateTime.parse(usedAt);
+      } catch (e) {
+        usedDate = null;
+      }
+    }
+
+    final isUsed = status == 'used';
 
     // Tính số tiền được giảm
     final discountAmount = _calculateDiscountAmount(point);
@@ -614,7 +625,7 @@ class _VoucherWalletState extends State<VoucherWallet>
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: reason != null ? Colors.grey[100] : null,
+      color: Colors.grey[100],
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -626,10 +637,10 @@ class _VoucherWalletState extends State<VoucherWallet>
                 Expanded(
                   child: Text(
                     partner,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: reason != null ? Colors.grey : Colors.green,
+                      color: Colors.grey,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -641,16 +652,14 @@ class _VoucherWalletState extends State<VoucherWallet>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: reason != null
-                        ? Colors.grey.shade200
-                        : Colors.green.shade100,
+                    color: Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '$point điểm',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: reason != null ? Colors.grey : Colors.green,
+                      color: Colors.grey,
                     ),
                   ),
                 ),
@@ -663,16 +672,9 @@ class _VoucherWalletState extends State<VoucherWallet>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: reason != null
-                    ? Colors.grey.shade100
-                    : Colors.amber.shade50,
+                color: Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: reason != null
-                      ? Colors.grey.shade300
-                      : Colors.amber.shade200,
-                  width: 2,
-                ),
+                border: Border.all(color: Colors.grey.shade300, width: 2),
               ),
               child: Center(
                 child: Column(
@@ -682,17 +684,17 @@ class _VoucherWalletState extends State<VoucherWallet>
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: reason != null ? Colors.grey : Colors.amber[800],
+                        color: Colors.grey[800],
                         letterSpacing: 1.2,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_formatCurrency(discountAmount)}đ',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: reason != null ? Colors.grey : Colors.green,
+                        color: Colors.grey,
                       ),
                     ),
                   ],
@@ -702,150 +704,85 @@ class _VoucherWalletState extends State<VoucherWallet>
 
             const SizedBox(height: 12),
 
-            // Hiển thị mã Bill nếu có
-            if (billCode.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(Icons.receipt, size: 16, color: Colors.blue[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Mã Bill: $billCode',
-                    style: TextStyle(fontSize: 12, color: Colors.blue[600]),
-                  ),
-                ],
+            // Hiển thị lý do
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 4),
-            ],
-
-            Row(
-              children: [
-                Icon(Icons.repeat, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text(
-                  'Giới hạn: $maxPerUser lần/user',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 4),
-
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  size: 16,
-                  color: isExpired ? Colors.red : Colors.grey[600],
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    isExpired
-                        ? 'Đã hết hạn'
-                        : 'Hết hạn: ${expiredDate?.day}/${expiredDate?.month}/${expiredDate?.year} (Còn $daysLeft ngày)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isExpired ? Colors.red : Colors.grey[600],
+              child: Row(
+                children: [
+                  Icon(
+                    isUsed ? Icons.check_circle : Icons.warning,
+                    size: 16,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      reason,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
-            if (reason != null) ...[
-              const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            if (exchangedDate != null)
               Row(
                 children: [
-                  Icon(Icons.info, size: 16, color: Colors.orange),
+                  Icon(Icons.date_range, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
                   Text(
-                    'Lý do: $reason',
-                    style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                    'Đổi ngày: ${exchangedDate.day}/${exchangedDate.month}/${exchangedDate.year}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
-            ],
+
+            if (usedDate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, size: 16, color: Colors.green),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Đã sử dụng: ${usedDate.day}/${usedDate.month}/${usedDate.year}',
+                      style: const TextStyle(fontSize: 12, color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
 
             const SizedBox(height: 16),
 
             SizedBox(
               width: double.infinity,
-              child: reason != null
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'KHÔNG THỂ ĐỔI',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                      ),
-                    )
-                  : !canExchange
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'CHƯA ĐỦ ĐIỂM',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[700],
-                          ),
-                        ),
-                      ),
-                    )
-                  : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () {
-                        // Navigate to voucher change page với voucher data
-                        Navigator.pushNamed(
-                          context,
-                          '/voucher-change',
-                          arguments: {
-                            'voucherId': voucherId,
-                            'voucherData': voucher,
-                          },
-                        );
-                      },
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.card_giftcard, size: 20),
-                          SizedBox(width: 8),
-                          Text(
-                            'ĐỔI VOUCHER',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Center(
+                  child: Text(
+                    'KHÔNG THỂ SỬ DỤNG',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
                     ),
-            ),
-
-            if (!canExchange && reason == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Bạn cần $point điểm, hiện có $userPoints điểm',
-                  style: TextStyle(fontSize: 12, color: Colors.orange[700]),
-                  textAlign: TextAlign.center,
+                  ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -854,7 +791,6 @@ class _VoucherWalletState extends State<VoucherWallet>
 
   @override
   Widget build(BuildContext context) {
-    // Hiển thị loading khi đang load user data
     if (isLoadingUser) {
       return Scaffold(
         appBar: AppBar(
@@ -874,7 +810,6 @@ class _VoucherWalletState extends State<VoucherWallet>
       );
     }
 
-    // Hiển thị lỗi nếu không có user data
     if (currentUsername.isEmpty && errorMessage.isNotEmpty) {
       return Scaffold(
         appBar: AppBar(
@@ -903,20 +838,6 @@ class _VoucherWalletState extends State<VoucherWallet>
       );
     }
 
-    // Tính toán số voucher theo từng loại
-    final usableVouchers = userVouchers.where((v) {
-      final status =
-          (v as Map<String, dynamic>)['status']?.toString() ?? 'usable';
-      return status == 'usable';
-    }).toList();
-
-    final usedVouchers = userVouchers.where((v) {
-      final status =
-          (v as Map<String, dynamic>)['status']?.toString() ?? 'usable';
-      return status == 'used';
-    }).toList();
-
-    // Build UI bình thường khi đã có user data
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ví Voucher'),
@@ -947,8 +868,6 @@ class _VoucherWalletState extends State<VoucherWallet>
           indicatorColor: Colors.white,
           tabs: const [
             Tab(icon: Icon(Icons.wallet), text: 'VOUCHER CỦA TÔI'),
-            Tab(icon: Icon(Icons.card_giftcard), text: 'CÓ THỂ ĐỔI'),
-            Tab(icon: Icon(Icons.money_off), text: 'CHƯA ĐỦ ĐIỂM'),
             Tab(icon: Icon(Icons.timer_off), text: 'HẾT HẠN'),
           ],
         ),
@@ -987,10 +906,10 @@ class _VoucherWalletState extends State<VoucherWallet>
           : TabBarView(
               controller: _tabController,
               children: [
-                // Tab 1: Voucher của tôi (đã đổi)
+                // Tab 1: Voucher của tôi (còn hiệu lực)
                 RefreshIndicator(
                   onRefresh: _loadAllVoucherData,
-                  child: userVouchers.isEmpty
+                  child: myVouchers.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -1013,162 +932,24 @@ class _VoucherWalletState extends State<VoucherWallet>
                                 'Hãy đổi voucher để tích lũy ưu đãi',
                                 style: TextStyle(color: Colors.grey),
                               ),
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.card_giftcard),
-                                label: const Text('Đổi voucher ngay'),
-                                onPressed: () {
-                                  _tabController.index = 1;
-                                },
-                              ),
-                            ],
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            // Sub tabs cho voucher của tôi
-                            Container(
-                              color: Colors.green[50],
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextButton(
-                                      onPressed: () {
-                                        // Hiển thị tất cả
-                                      },
-                                      child: Text(
-                                        'Có thể dùng (${usableVouchers.length})',
-                                        style: TextStyle(
-                                          color: Colors.green[700],
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: TextButton(
-                                      onPressed: () {
-                                        // Hiển thị đã sử dụng
-                                      },
-                                      child: Text(
-                                        'Đã sử dụng (${usedVouchers.length})',
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(16),
-                                itemCount: usableVouchers.length,
-                                itemBuilder: (context, index) {
-                                  final voucher =
-                                      usableVouchers[index]
-                                          as Map<String, dynamic>;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 16),
-                                    child: _buildUserVoucherCard(voucher),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-
-                // Tab 2: Có thể đổi
-                RefreshIndicator(
-                  onRefresh: _loadAllVoucherData,
-                  child: availableVouchers.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.card_giftcard,
-                                color: Colors.grey[400],
-                                size: 64,
-                              ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Không có voucher có thể đổi',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Hãy tích lũy thêm điểm để đổi voucher',
-                                style: TextStyle(color: Colors.grey),
-                              ),
                             ],
                           ),
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: availableVouchers.length,
+                          itemCount: myVouchers.length,
                           itemBuilder: (context, index) {
                             final voucher =
-                                availableVouchers[index]
-                                    as Map<String, dynamic>;
+                                myVouchers[index] as Map<String, dynamic>;
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 16),
-                              child: _buildExchangeVoucherCard(voucher),
+                              child: _buildMyVoucherCard(voucher),
                             );
                           },
                         ),
                 ),
 
-                // Tab 3: Chưa đủ điểm
-                RefreshIndicator(
-                  onRefresh: _loadAllVoucherData,
-                  child: insufficientVouchers.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.money_off,
-                                color: Colors.grey[400],
-                                size: 64,
-                              ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Tất cả voucher đều đủ điểm để đổi',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Bạn có $userPoints điểm',
-                                style: TextStyle(color: Colors.grey[500]),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: insufficientVouchers.length,
-                          itemBuilder: (context, index) {
-                            final voucher =
-                                insufficientVouchers[index]
-                                    as Map<String, dynamic>;
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: _buildExchangeVoucherCard(voucher),
-                            );
-                          },
-                        ),
-                ),
-
-                // Tab 4: Hết hạn/Đạt giới hạn
+                // Tab 2: Hết hạn/Đã sử dụng/Đạt giới hạn
                 RefreshIndicator(
                   onRefresh: _loadAllVoucherData,
                   child: expiredVouchers.isEmpty
@@ -1183,7 +964,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                'Không có voucher hết hạn',
+                                'Không có voucher không thể sử dụng',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Colors.grey,
@@ -1205,21 +986,13 @@ class _VoucherWalletState extends State<VoucherWallet>
                                 expiredVouchers[index] as Map<String, dynamic>;
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 16),
-                              child: _buildExchangeVoucherCard(voucher),
+                              child: _buildExpiredVoucherCard(voucher),
                             );
                           },
                         ),
                 ),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.green[700],
-        onPressed: () {
-          // Đi đến màn hình đổi voucher
-          Navigator.pushNamed(context, '/voucher-change');
-        },
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
     );
   }
 

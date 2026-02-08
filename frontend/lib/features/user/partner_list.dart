@@ -614,22 +614,6 @@ class _PartnerListState extends State<PartnerList> {
         ],
       ),
       body: _buildBody(),
-      // 🔥 Chỉ hiện nút thêm partner nếu là admin
-      floatingActionButton: _isAdmin
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PartnerCreate()),
-                ).then((_) {
-                  _loadPartners(); // Refresh sau khi tạo mới
-                });
-              },
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.add),
-            )
-          : null,
     );
   }
 }

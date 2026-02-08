@@ -236,26 +236,21 @@ class ApiService {
 
   // ================== VOUCHER API ==================
 
-  // 1. Admin: Tạo voucher mới (ĐÃ CẬP NHẬT THÊM billCode)
+  // 1. Admin: Tạo voucher mới
   static Future<Map<String, dynamic>> createVoucher({
     required String partner,
     required int point,
     required int maxPerUser,
     required String expired,
-    String? billCode, // Thêm trường billCode (tùy chọn)
   }) async {
     try {
-      // Tạo body request, thêm billCode nếu có
+      // Tạo body request, không có billCode
       Map<String, dynamic> requestBody = {
         "partner": partner,
         "point": point,
         "maxPerUser": maxPerUser,
         "expired": expired,
       };
-
-      if (billCode != null && billCode.isNotEmpty) {
-        requestBody['billCode'] = billCode;
-      }
 
       final res = await http.post(
         Uri.parse("$baseUrl/admin/vouchers"),

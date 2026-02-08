@@ -212,39 +212,6 @@ class _ControllvoucherState extends State<Controllvoucher> {
   }
 
   /// =======================
-  /// RESET LƯỢT ĐỔI CỦA USER
-  /// =======================
-  Future<void> resetUserRedeem(Map<String, dynamic> voucher) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Xác nhận reset lượt đổi'),
-        content: Text(
-          'Bạn có chắc muốn reset lượt đổi của voucher "${voucher['partner']}"?\n'
-          'Hành động này sẽ xóa tất cả lượt đổi của user và cho phép đổi lại từ đầu.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Huỷ'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    // TODO: Thêm API để reset lượt đổi voucher
-    // Hiện tại chỉ hiển thị thông báo
-    showMsg('🔄 Chức năng reset lượt đổi đang được phát triển');
-  }
-
-  /// =======================
   /// LẤY THỐNG KÊ VOUCHER
   /// =======================
   Future<Map<String, dynamic>> getVoucherStats(String voucherId) async {
@@ -375,7 +342,6 @@ class _ControllvoucherState extends State<Controllvoucher> {
                     : int.tryParse(v['maxPerUser']?.toString() ?? '1') ?? 1;
                 final expired = v['expired']?.toString() ?? '';
                 final voucherId = v['_id']?.toString() ?? '';
-                final billCode = v['billCode']?.toString() ?? '';
                 final createdAt = v['created_at']?.toString() ?? '';
 
                 // Parse dates
@@ -439,14 +405,6 @@ class _ControllvoucherState extends State<Controllvoucher> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (billCode.isNotEmpty)
-                                    Text(
-                                      'Mã Bill: $billCode',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.blue,
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
@@ -753,40 +711,20 @@ class _ControllvoucherState extends State<Controllvoucher> {
 
                         const SizedBox(height: 16),
 
-                        /// ACTION BUTTONS
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.refresh, size: 18),
-                                label: const Text('Reset lượt đổi'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange[50],
-                                  foregroundColor: Colors.orange[700],
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                ),
-                                onPressed: () => resetUserRedeem(v),
-                              ),
+                        /// ACTION BUTTONS - CHỈ CÒN NÚT THU HỒI
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.delete, size: 18),
+                            label: const Text('Thu hồi voucher'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red[50],
+                              foregroundColor: Colors.red[700],
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.delete, size: 18),
-                                label: const Text('Thu hồi'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red[50],
-                                  foregroundColor: Colors.red[700],
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    revokeVoucher(index, voucherId, partner),
-                              ),
-                            ),
-                          ],
+                            onPressed: () =>
+                                revokeVoucher(index, voucherId, partner),
+                          ),
                         ),
                       ],
                     ),

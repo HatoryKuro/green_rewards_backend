@@ -119,7 +119,6 @@ class _VoucherChangeState extends State<VoucherChange> {
     String voucherId,
     int point,
     String partner,
-    String billCode,
   ) async {
     final discountAmount = _calculateDiscountAmount(point);
 
@@ -159,13 +158,6 @@ class _VoucherChangeState extends State<VoucherChange> {
               ),
               const SizedBox(height: 4),
               Text('💰 $point điểm', style: const TextStyle(fontSize: 14)),
-              if (billCode.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '🏷️ Mã Bill: $billCode',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ],
               const SizedBox(height: 12),
               Text(
                 'Số tiền được giảm: ${_formatCurrency(discountAmount)}đ',
@@ -248,10 +240,6 @@ class _VoucherChangeState extends State<VoucherChange> {
                 Text('Số tiền được giảm: ${_formatCurrency(discountAmount)}đ'),
                 const SizedBox(height: 8),
                 Text('Số điểm còn lại: $newPoints điểm'),
-                if (billCode.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('Mã Bill: $billCode'),
-                ],
               ],
             ),
           ),
@@ -298,7 +286,6 @@ class _VoucherChangeState extends State<VoucherChange> {
         : int.tryParse(voucher['maxPerUser']?.toString() ?? '1') ?? 1;
     final expired = voucher['expired']?.toString() ?? '';
     final voucherId = voucher['_id']?.toString() ?? '';
-    final billCode = voucher['billCode']?.toString() ?? '';
 
     // Parse expired date
     DateTime? expiredDate;
@@ -398,21 +385,6 @@ class _VoucherChangeState extends State<VoucherChange> {
 
             const SizedBox(height: 12),
 
-            // Hiển thị mã Bill nếu có
-            if (billCode.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(Icons.receipt, size: 16, color: Colors.blue[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Mã Bill: $billCode',
-                    style: TextStyle(fontSize: 12, color: Colors.blue[600]),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-
             Row(
               children: [
                 Icon(Icons.repeat, size: 16, color: Colors.grey[600]),
@@ -463,8 +435,7 @@ class _VoucherChangeState extends State<VoucherChange> {
                   ),
                 ),
                 onPressed: canExchange && !isExpired
-                    ? () =>
-                          _exchangeVoucher(voucherId, point, partner, billCode)
+                    ? () => _exchangeVoucher(voucherId, point, partner)
                     : null,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
