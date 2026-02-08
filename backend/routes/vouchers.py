@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify  # Đảm bảo có jsonify
+from flask import Blueprint, request, jsonify
 from models.database import vouchers, user_vouchers, users, check_database
 from utils.helpers import safe_int, json_error
 from bson.objectid import ObjectId
@@ -8,22 +8,51 @@ vouchers_bp = Blueprint('vouchers', __name__)
 
 @vouchers_bp.route("/admin/vouchers", methods=["POST"])
 def create_voucher():
+    """Tạo voucher mới (Admin only) - ĐÃ SỬA LỖI KIỂM TRA maxPerUser"""
     # Kiểm tra database
     if not check_database():
         return json_error("Database không khả dụng", 503)
     
     data = request.json
     
+    # SỬA: Kiểm tra trường có tồn tại trong data, không kiểm tra giá trị
     required_fields = ["partner", "point", "maxPerUser", "expired"]
     for field in required_fields:
-        if not data.get(field):
+        if field not in data:  # Sửa từ data.get(field) thành field not in data
             return json_error(f"Thiếu trường {field}", 400)
+    
+    # Kiểm tra kiểu dữ liệu
+    try:
+        point = int(data["point"])
+        maxPerUser = int(data["maxPerUser"])
+    except (ValueError, TypeError):
+        return json_error("point và maxPerUser phải là số nguyên", 400)
+    
+    # Kiểm tra giá trị hợp lệ
+    if point <= 0:
+        return json_error("point phải lớn hơn 0", 400)
+    
+    if maxPerUser < 0:
+        return json_error("maxPerUser phải lớn hơn hoặc bằng 0", 400)
+    
+    # Kiểm tra expired là string và định dạng hợp lệ
+    expired = data["expired"]
+    try:
+        # Thử parse để kiểm tra định dạng ISO
+        datetime.fromisoformat(expired.replace('Z', '+00:00'))
+    except ValueError:
+        return json_error("expired phải là chuỗi ISO 8601 hợp lệ", 400)
+    
+    # Kiểm tra expired không phải trong quá khứ
+    expired_date = datetime.fromisoformat(expired.replace('Z', '+00:00'))
+    if expired_date <= datetime.now():
+        return json_error("expired phải ở tương lai", 400)
     
     new_voucher = {
         "partner": data["partner"],
-        "point": int(data["point"]),
-        "maxPerUser": int(data["maxPerUser"]),
-        "expired": data["expired"],
+        "point": point,
+        "maxPerUser": maxPerUser,  # Có thể là 0 (không giới hạn)
+        "expired": expired,
         "status": "available",
         "created_at": datetime.now()
     }
@@ -39,12 +68,18 @@ def create_voucher():
 
 @vouchers_bp.route("/vouchers", methods=["GET"])
 def get_available_vouchers():
+    """Lấy danh sách voucher có sẵn để đổi"""
     # Kiểm tra database
     if not check_database():
         return jsonify([]), 200  # Trả về mảng rỗng
     
     try:
-        vouchers_list = vouchers.find({"status": "available"}).sort("point", 1)
+        # Chỉ lấy voucher còn hạn và available
+        now = datetime.now()
+        vouchers_list = vouchers.find({
+            "status": "available",
+            "expired": {"$gt": now.isoformat()}
+        }).sort("point", 1)
         
         result = []
         for voucher in vouchers_list:
@@ -63,6 +98,7 @@ def get_available_vouchers():
 
 @vouchers_bp.route("/users/<username>/exchange-voucher", methods=["POST"])
 def exchange_voucher(username):
+    """User đổi voucher bằng điểm"""
     # Kiểm tra database
     if not check_database():
         return json_error("Database không khả dụng", 503)
@@ -79,21 +115,37 @@ def exchange_voucher(username):
         return json_error("User không tồn tại", 404)
     
     # Kiểm tra voucher
-    voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
+    try:
+        voucher = vouchers.find_one({"_id": ObjectId(voucher_id)})
+    except Exception:
+        return json_error("Voucher ID không hợp lệ", 400)
+    
     if not voucher:
         return json_error("Voucher không tồn tại", 404)
+    
+    # Kiểm tra voucher còn available và chưa hết hạn
+    if voucher.get("status") != "available":
+        return json_error("Voucher không khả dụng", 400)
+    
+    try:
+        expired_date = datetime.fromisoformat(voucher["expired"].replace('Z', '+00:00'))
+        if expired_date <= datetime.now():
+            return json_error("Voucher đã hết hạn", 400)
+    except Exception:
+        return json_error("Voucher có expired không hợp lệ", 400)
     
     # Kiểm tra điểm
     if user.get("point", 0) < voucher["point"]:
         return json_error("Không đủ điểm để đổi", 400)
     
-    # Kiểm tra đã đổi voucher này chưa
-    exchanged_count = user_vouchers.count_documents({
-        "username": username,
-        "voucher_id": voucher_id
-    })
-    if exchanged_count >= voucher["maxPerUser"]:
-        return json_error("Đã đạt giới hạn đổi voucher này", 400)
+    # Kiểm tra đã đổi voucher này chưa (chỉ kiểm tra nếu maxPerUser > 0)
+    if voucher["maxPerUser"] > 0:
+        exchanged_count = user_vouchers.count_documents({
+            "username": username,
+            "voucher_id": voucher_id
+        })
+        if exchanged_count >= voucher["maxPerUser"]:
+            return json_error("Đã đạt giới hạn đổi voucher này", 400)
     
     # Trừ điểm
     new_point = user.get("point", 0) - voucher["point"]
@@ -121,6 +173,7 @@ def exchange_voucher(username):
 
 @vouchers_bp.route("/users/<username>/vouchers", methods=["GET"])
 def get_user_vouchers(username):
+    """Lấy voucher của user"""
     # Kiểm tra database
     if not check_database():
         return jsonify({"vouchers": []}), 200
@@ -146,6 +199,7 @@ def get_user_vouchers(username):
 
 @vouchers_bp.route("/vouchers/<voucher_id>/use", methods=["PUT"])
 def mark_voucher_used(voucher_id):
+    """Đánh dấu voucher đã sử dụng"""
     # Kiểm tra database
     if not check_database():
         return json_error("Database không khả dụng", 503)
@@ -165,6 +219,7 @@ def mark_voucher_used(voucher_id):
 
 @vouchers_bp.route("/admin/vouchers", methods=["GET"])
 def get_all_vouchers():
+    """Lấy tất cả voucher (Admin)"""
     # Kiểm tra database
     if not check_database():
         return jsonify([]), 200
@@ -190,6 +245,7 @@ def get_all_vouchers():
 
 @vouchers_bp.route("/voucher/<voucher_id>", methods=["GET"])
 def get_voucher_detail(voucher_id):
+    """Lấy chi tiết voucher"""
     # Kiểm tra database
     if not check_database():
         return json_error("Database không khả dụng", 503)
@@ -212,6 +268,7 @@ def get_voucher_detail(voucher_id):
 
 @vouchers_bp.route("/admin/vouchers/stats", methods=["GET"])
 def get_voucher_stats():
+    """Thống kê voucher (Admin)"""
     # Kiểm tra database
     if not check_database():
         return jsonify({
