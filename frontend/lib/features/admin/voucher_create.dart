@@ -459,31 +459,6 @@ class _CreateVoucherState extends State<CreateVoucher> {
       appBar: AppBar(
         title: const Text('Tạo Voucher'),
         backgroundColor: Colors.green[700],
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Thông tin Voucher'),
-                  content: const Text(
-                    '• Đổi liên tục: maxPerUser = 0 (không giới hạn)\n'
-                    '• Giới hạn: maxPerUser > 0 (số lần/user)\n'
-                    '• Điểm tối thiểu: 500 = 10.000đ\n'
-                    '• Thời hạn: Ít nhất 24h từ thời điểm tạo',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Đóng'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -800,14 +775,9 @@ class _CreateVoucherState extends State<CreateVoucher> {
                             fontStyle: FontStyle.italic,
                           ),
                           children: const [
-                            TextSpan(text: 'Đổi liên tục: '),
-                            TextSpan(
-                              text: 'maxPerUser = 0',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
                             TextSpan(
                               text:
-                                  ', user có thể đổi không giới hạn số lần cho đến khi hết hạn voucher',
+                                  'Đổi liên tục và không bị giới hạn số lần đổi',
                             ),
                           ],
                         ),
@@ -848,17 +818,18 @@ class _CreateVoucherState extends State<CreateVoucher> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Đổi liên tục',
+                          'Đổi Không Giới Hạn Số Lần',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
+                            color: Colors.green,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           isUnlimited
-                              ? '✓ Voucher có thể đổi không giới hạn, chỉ mất khi Admin xoá (maxPerUser=0)'
-                              : 'Voucher sẽ bị giới hạn số lần đổi theo thiết lập bên trên',
+                              ? 'Voucher sẽ không bị giới hạn số lần đổi'
+                              : 'Voucher sẽ bị giới hạn số lần đổi',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey[700],

@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify  # Đảm bảo có jsonify
-from models.database import partners, check_database
+from flask import Blueprint, request, jsonify
+from models.database import partners, fs, check_database  # đã thêm fs
 from utils.helpers import json_error
 from bson.objectid import ObjectId
 from datetime import datetime
@@ -143,25 +143,24 @@ def delete_partner(partner_id):
         if not partner:
             return json_error("Partner not found", 404)
         
+        # Xóa ảnh trong GridFS nếu có
         if partner.get("image_id"):
             try:
-                from models.database import fs
                 fs.delete(ObjectId(partner["image_id"]))
-            except:
-                pass
+            except Exception as e:
+                print(f"Error deleting image: {e}")
+                # Vẫn tiếp tục xóa partner dù xóa ảnh lỗi
         
-        result = partners.update_one(
-            {"_id": ObjectId(partner_id)},
-            {"$set": {"status": "inactive"}}
-        )
+        # Hard delete: xóa document khỏi collection
+        result = partners.delete_one({"_id": ObjectId(partner_id)})
         
-        if result.modified_count == 1:
+        if result.deleted_count == 1:
             return jsonify({"message": "Partner deleted successfully"}), 200
         else:
             return json_error("Failed to delete partner", 500)
             
-    except:
-        return json_error("Invalid partner ID", 400)
+    except Exception as e:
+        return json_error(f"Error: {str(e)}", 500)
 
 @partners_bp.route("/partners/names", methods=["GET"])
 def get_partner_names():

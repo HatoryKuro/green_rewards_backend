@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:green_rewards/features/admin/partner_create.dart';
 import '../../core/services/api_service.dart';
-import '../../core/services/user_preferences.dart'; // Thêm import helper class
+import '../../core/services/user_preferences.dart';
 import '../../core/models/partner.dart';
 
 class PartnerList extends StatefulWidget {
@@ -11,22 +11,33 @@ class PartnerList extends StatefulWidget {
   State<PartnerList> createState() => _PartnerListState();
 }
 
-class _PartnerListState extends State<PartnerList> {
+class _PartnerListState extends State<PartnerList>
+    with SingleTickerProviderStateMixin {
   List<Partner> _partners = [];
   bool _isLoading = true;
   String? _errorMessage;
   bool _isRefreshing = false;
   int? _expandedIndex;
-  bool _isAdmin = false; // Biến kiểm tra role admin
+  bool _isAdmin = false;
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    _loadUserRole(); // Load role trước
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _loadUserRole();
     _loadPartners();
   }
 
-  // 🔥 Load role từ UserPreferences helper class
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadUserRole() async {
     try {
       final isAdmin = await UserPreferences.isAdmin();
@@ -87,7 +98,6 @@ class _PartnerListState extends State<PartnerList> {
   }
 
   Future<void> _deletePartner(String partnerId, String partnerName) async {
-    // 🔥 Chỉ admin mới được xóa
     if (!_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -160,25 +170,35 @@ class _PartnerListState extends State<PartnerList> {
     final imageUrl = partner.getImageUrl();
 
     if (imageUrl.isNotEmpty) {
-      return Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!, width: 1),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return _buildDefaultImage();
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return _buildDefaultImage();
-            },
+      return Hero(
+        tag: 'partner_image_${partner.id}',
+        child: Container(
+          width: 70,
+          height: 70,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey[300]!, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return _buildDefaultImage();
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return _buildDefaultImage();
+              },
+            ),
           ),
         ),
       );
@@ -193,8 +213,15 @@ class _PartnerListState extends State<PartnerList> {
       height: 70,
       decoration: BoxDecoration(
         color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey[300]!, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: const Icon(Icons.store, color: Colors.grey, size: 32),
     );
@@ -275,7 +302,6 @@ class _PartnerListState extends State<PartnerList> {
             'Danh sách đối tác đang trống',
             style: TextStyle(color: Colors.grey[500], fontSize: 14),
           ),
-          // 🔥 Chỉ admin mới thấy nút tạo partner mới
           if (_isAdmin) ...[
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -284,7 +310,7 @@ class _PartnerListState extends State<PartnerList> {
                   context,
                   MaterialPageRoute(builder: (_) => const PartnerCreate()),
                 ).then((_) {
-                  _loadPartners(); // Refresh sau khi tạo mới
+                  _loadPartners();
                 });
               },
               icon: const Icon(Icons.add, size: 20),
@@ -292,6 +318,13 @@ class _PartnerListState extends State<PartnerList> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ],
@@ -300,181 +333,193 @@ class _PartnerListState extends State<PartnerList> {
     );
   }
 
+  void _toggleExpand(int index) {
+    setState(() {
+      if (_expandedIndex == index) {
+        _expandedIndex = null;
+        _animationController.reverse();
+      } else {
+        _expandedIndex = index;
+        _animationController.forward();
+      }
+    });
+  }
+
   Widget _buildPartnerItem(Partner partner, int index) {
     final isExpanded = _expandedIndex == index;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Column(
-          children: [
-            ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              leading: _buildPartnerImage(partner),
-              title: Text(
-                partner.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.green[100]!),
-                        ),
-                        child: Text(
-                          partner.type,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.green[700],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  if (partner.description.isNotEmpty)
-                    Text(
-                      partner.description,
-                      maxLines: isExpanded ? null : 1,
-                      overflow: isExpanded ? null : TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.grey[700], fontSize: 14),
-                    ),
-                ],
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.grey[600],
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _expandedIndex = isExpanded ? null : index;
-                      });
-                    },
-                    tooltip: isExpanded ? 'Thu gọn' : 'Xem thêm',
-                  ),
-                  // 🔥 CHỈ HIỆN NÚT XÓA NẾU LÀ ADMIN
-                  if (_isAdmin)
-                    IconButton(
-                      icon: Icon(
-                        Icons.delete_outline,
-                        color: Colors.red[400],
-                        size: 22,
-                      ),
-                      onPressed: () => _deletePartner(partner.id, partner.name),
-                      tooltip: 'Xóa đối tác',
-                    ),
-                ],
-              ),
-              onTap: () {
-                setState(() {
-                  _expandedIndex = isExpanded ? null : index;
-                });
-              },
-            ),
-
-            // Xem thêm thông tin khi mở rộng
-            if (isExpanded)
+        elevation: 3,
+        shadowColor: Colors.green.withOpacity(0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _toggleExpand(index),
+          child: Column(
+            children: [
+              // Header luôn hiển thị
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
-                    const SizedBox(height: 8),
-                    if (partner.description.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[200]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.description,
-                                  color: Colors.grey[600],
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Mô tả chi tiết',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ],
+                    _buildPartnerImage(partner),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            partner.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              partner.description,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.green[100]!),
+                            ),
+                            child: Text(
+                              partner.type,
                               style: TextStyle(
-                                color: Colors.grey[800],
-                                fontSize: 14,
-                                height: 1.5,
+                                fontSize: 12,
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-
-                    const SizedBox(height: 12),
-
-                    // Thông tin thêm (nếu có)
+                    ),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildInfoChip(
-                          icon: Icons.image,
-                          label: partner.getImageUrl().isNotEmpty
-                              ? 'Có ảnh'
-                              : 'Không có ảnh',
-                          color: partner.getImageUrl().isNotEmpty
-                              ? Colors.blue
-                              : Colors.grey,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildInfoChip(
-                          icon: Icons.verified,
-                          label: partner.status == 'active'
-                              ? 'Đang hoạt động'
-                              : 'Ngừng hoạt động',
-                          color: partner.status == 'active'
-                              ? Colors.green
-                              : Colors.orange,
+                        if (_isAdmin)
+                          IconButton(
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: Colors.red[400],
+                              size: 22,
+                            ),
+                            onPressed: () =>
+                                _deletePartner(partner.id, partner.name),
+                            tooltip: 'Xóa đối tác',
+                          ),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 300),
+                          child: Icon(
+                            Icons.keyboard_arrow_down,
+                            color: Colors.grey[600],
+                            size: 28,
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-          ],
+
+              // Phần mở rộng (chi tiết)
+              AnimatedCrossFade(
+                firstChild: const SizedBox.shrink(),
+                secondChild: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(height: 1, thickness: 1),
+                      const SizedBox(height: 12),
+
+                      // Mô tả chi tiết
+                      if (partner.description.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.description,
+                              size: 18,
+                              color: Colors.green[700],
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Mô tả',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Text(
+                            partner.description,
+                            style: TextStyle(
+                              color: Colors.grey[800],
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Thông tin bổ sung
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildInfoChip(
+                            icon: Icons.image,
+                            label: partner.getImageUrl().isNotEmpty
+                                ? 'Có ảnh'
+                                : 'Không có ảnh',
+                            color: partner.getImageUrl().isNotEmpty
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          _buildInfoChip(
+                            icon: Icons.verified,
+                            label: partner.status == 'active'
+                                ? 'Đang hoạt động'
+                                : 'Ngừng hoạt động',
+                            color: partner.status == 'active'
+                                ? Colors.green
+                                : Colors.orange,
+                          ),
+                          _buildInfoChip(
+                            icon: Icons.qr_code,
+                            label: 'ID: ${partner.id.substring(0, 6)}...',
+                            color: Colors.purple,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                crossFadeState: isExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 300),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -489,7 +534,7 @@ class _PartnerListState extends State<PartnerList> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
@@ -556,19 +601,26 @@ class _PartnerListState extends State<PartnerList> {
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 8),
-            child: CircleAvatar(
-              backgroundColor: Colors.green[50],
-              radius: 18,
-              child: Text(
-                _partners.length.toString(),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green[700],
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.green[100]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.store, color: Colors.green[700], size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  '${_partners.length}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[700],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-          // 🔥 Hiện badge admin nếu là admin
           if (_isAdmin)
             Container(
               margin: const EdgeInsets.only(right: 8),
