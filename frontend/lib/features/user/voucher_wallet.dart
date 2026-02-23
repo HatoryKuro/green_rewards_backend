@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/api_service.dart';
+// Import màn hình đổi voucher
+import 'voucher_change.dart';
 
 class VoucherWallet extends StatefulWidget {
   const VoucherWallet({super.key});
@@ -78,7 +80,7 @@ class _VoucherWalletState extends State<VoucherWallet>
   }
 
   /// =======================
-  /// LOAD ALL VOUCHER DATA
+  /// LOAD ALL VOUCHER DATA (ĐÃ SỬA)
   /// =======================
   Future<void> _loadAllVoucherData() async {
     if (currentUsername.isEmpty) {
@@ -97,34 +99,39 @@ class _VoucherWalletState extends State<VoucherWallet>
     });
 
     try {
-      // Load available vouchers từ API
-      final availableResponse = await ApiService.getAvailableVouchers();
-
-      // Load user's vouchers (đã đổi)
+      // Lấy danh sách voucher của user
       final userVouchersResponse = await ApiService.getUserVouchers(
         currentUsername,
       );
 
       final now = DateTime.now();
+      List<Map<String, dynamic>> tempMyVouchers = [];
+      List<Map<String, dynamic>> tempExpiredVouchers = [];
 
-      // Tạo map để tra cứu nhanh thông tin voucher gốc
-      final Map<String, dynamic> availableVoucherMap = {};
-      for (final voucher in availableResponse) {
-        final voucherData = voucher as Map<String, dynamic>;
-        final id = voucherData['_id']?.toString() ?? '';
-        if (id.isNotEmpty) {
-          availableVoucherMap[id] = voucherData;
-        }
-      }
+      // Tạo danh sách Future để lấy chi tiết từng voucher gốc
+      final detailFutures = userVouchersResponse
+          .map<Future<Map<String, dynamic>?>>((userVoucher) async {
+            final voucherData = userVoucher as Map<String, dynamic>;
+            final voucherId = voucherData['voucher_id']?.toString() ?? '';
+            if (voucherId.isEmpty) return null;
+            try {
+              return await ApiService.getVoucherDetail(voucherId);
+            } catch (e) {
+              print('Không thể lấy chi tiết voucher $voucherId: $e');
+              return null;
+            }
+          })
+          .toList();
 
-      // Phân loại voucher
-      for (final userVoucher in userVouchersResponse) {
-        final voucherData = userVoucher as Map<String, dynamic>;
-        final voucherId = voucherData['voucher_id']?.toString() ?? '';
-        final status = voucherData['status']?.toString() ?? 'usable';
+      final details = await Future.wait(detailFutures);
 
-        // Lấy thông tin voucher gốc
-        final originalVoucher = availableVoucherMap[voucherId];
+      // Xử lý từng voucher cùng với chi tiết gốc tương ứng
+      for (int i = 0; i < userVouchersResponse.length; i++) {
+        final userVoucher = userVouchersResponse[i] as Map<String, dynamic>;
+        final originalVoucher = details[i];
+        final voucherId = userVoucher['voucher_id']?.toString() ?? '';
+        final status = userVoucher['status']?.toString() ?? 'usable';
+
         if (originalVoucher != null) {
           final expired = originalVoucher['expired']?.toString() ?? '';
           final maxPerUser = originalVoucher['maxPerUser'] is int
@@ -134,7 +141,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                     ) ??
                     1;
 
-          // Parse expired date
+          // Parse ngày hết hạn
           DateTime? expiredDate;
           try {
             expiredDate = DateTime.parse(expired);
@@ -163,9 +170,8 @@ class _VoucherWalletState extends State<VoucherWallet>
             reason = 'Đã đạt giới hạn';
           }
 
-          // Thêm vào danh sách phù hợp
           final voucherWithInfo = {
-            ...voucherData,
+            ...userVoucher,
             'original_voucher': originalVoucher,
             'reason': reason,
             'isExpired': isExpired,
@@ -173,21 +179,21 @@ class _VoucherWalletState extends State<VoucherWallet>
           };
 
           if (reason != null) {
-            expiredVouchers.add(voucherWithInfo);
+            tempExpiredVouchers.add(voucherWithInfo);
           } else {
-            myVouchers.add(voucherWithInfo);
+            tempMyVouchers.add(voucherWithInfo);
           }
         } else {
-          // Nếu không tìm thấy voucher gốc, coi như không thể sử dụng
-          expiredVouchers.add({
-            ...voucherData,
+          // Không tìm thấy voucher gốc
+          tempExpiredVouchers.add({
+            ...userVoucher,
             'reason': 'Voucher không tồn tại',
           });
         }
       }
 
-      // Sắp xếp: voucher chưa sử dụng lên đầu
-      myVouchers.sort((a, b) {
+      // Sắp xếp: voucher chưa dùng lên đầu
+      tempMyVouchers.sort((a, b) {
         final statusA = a['status']?.toString() ?? 'usable';
         final statusB = b['status']?.toString() ?? 'usable';
         if (statusA == 'used' && statusB != 'used') return 1;
@@ -196,7 +202,11 @@ class _VoucherWalletState extends State<VoucherWallet>
       });
 
       if (mounted) {
-        setState(() {});
+        setState(() {
+          myVouchers = tempMyVouchers;
+          expiredVouchers = tempExpiredVouchers;
+          isLoadingVouchers = false;
+        });
       }
     } catch (e) {
       print('Lỗi khi load voucher data: $e');
@@ -204,11 +214,6 @@ class _VoucherWalletState extends State<VoucherWallet>
         setState(() {
           errorMessage =
               'Không thể tải dữ liệu voucher. Vui lòng kiểm tra kết nối và thử lại.';
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
           isLoadingVouchers = false;
         });
       }
@@ -243,11 +248,15 @@ class _VoucherWalletState extends State<VoucherWallet>
     String voucherId,
     Map<String, dynamic> voucher,
   ) async {
-    final originalVoucher = voucher['original_voucher'] ?? {};
-    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
-    final point = originalVoucher['point'] is int
-        ? originalVoucher['point']
-        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
+    // Ưu tiên lấy partner và point từ voucher (userVoucher) trước, fallback sang original_voucher
+    final partner =
+        voucher['partner']?.toString() ??
+        (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
+    final point = voucher['point'] is int
+        ? voucher['point']
+        : (voucher['original_voucher']?['point'] is int
+              ? voucher['original_voucher']['point']
+              : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0);
 
     // Show QR dialog
     final qrData =
@@ -387,14 +396,18 @@ class _VoucherWalletState extends State<VoucherWallet>
   }
 
   /// =======================
-  /// BUILD VOUCHER CARD FOR MY VOUCHERS
+  /// BUILD VOUCHER CARD FOR MY VOUCHERS (ĐÃ SỬA)
   /// =======================
   Widget _buildMyVoucherCard(Map<String, dynamic> voucher) {
-    final originalVoucher = voucher['original_voucher'] ?? {};
-    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
-    final point = originalVoucher['point'] is int
-        ? originalVoucher['point']
-        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
+    // Ưu tiên lấy từ voucher (userVoucher) trước, fallback sang original_voucher
+    final partner =
+        voucher['partner']?.toString() ??
+        (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
+    final point = voucher['point'] is int
+        ? voucher['point']
+        : (voucher['original_voucher']?['point'] is int
+              ? voucher['original_voucher']['point']
+              : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0);
     final status = voucher['status']?.toString() ?? 'usable';
     final exchangedAt = voucher['exchanged_at']?.toString() ?? '';
     final usedAt = voucher['used_at']?.toString();
@@ -586,14 +599,18 @@ class _VoucherWalletState extends State<VoucherWallet>
   }
 
   /// =======================
-  /// BUILD EXPIRED VOUCHER CARD
+  /// BUILD EXPIRED VOUCHER CARD (ĐÃ SỬA)
   /// =======================
   Widget _buildExpiredVoucherCard(Map<String, dynamic> voucher) {
-    final originalVoucher = voucher['original_voucher'] ?? {};
-    final partner = originalVoucher['partner']?.toString() ?? 'Unknown';
-    final point = originalVoucher['point'] is int
-        ? originalVoucher['point']
-        : int.tryParse(originalVoucher['point']?.toString() ?? '0') ?? 0;
+    // Ưu tiên lấy từ voucher (userVoucher) trước, fallback sang original_voucher
+    final partner =
+        voucher['partner']?.toString() ??
+        (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
+    final point = voucher['point'] is int
+        ? voucher['point']
+        : (voucher['original_voucher']?['point'] is int
+              ? voucher['original_voucher']['point']
+              : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0);
     final status = voucher['status']?.toString() ?? 'usable';
     final reason = voucher['reason']?.toString() ?? 'Không thể sử dụng';
     final exchangedAt = voucher['exchanged_at']?.toString() ?? '';
@@ -931,6 +948,32 @@ class _VoucherWalletState extends State<VoucherWallet>
                               const Text(
                                 'Hãy đổi voucher để tích lũy ưu đãi',
                                 style: TextStyle(color: Colors.grey),
+                              ),
+                              const SizedBox(height: 20),
+                              // Nút Đổi voucher
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const VoucherChange(),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.card_giftcard),
+                                label: const Text('ĐỔI VOUCHER NGAY'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
                               ),
                             ],
                           ),

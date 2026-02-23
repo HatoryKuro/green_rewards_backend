@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/api_service.dart';
+import 'voucher_wallet.dart'; // Thêm import để điều hướng
 
 class VoucherChange extends StatefulWidget {
   final String? voucherId;
@@ -40,6 +41,7 @@ class _VoucherChangeState extends State<VoucherChange> {
         userPoints = points;
       });
     } else {
+      // Nếu không có trong prefs, thử lấy từ API
       try {
         final userInfo = await ApiService.getUserByUsername(username);
         if (userInfo != null && mounted) {
@@ -222,6 +224,11 @@ class _VoucherChangeState extends State<VoucherChange> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('point', newPoints);
 
+      // Cập nhật state userPoints
+      setState(() {
+        userPoints = newPoints;
+      });
+
       // Đóng dialog loading
       if (mounted) Navigator.pop(context);
 
@@ -246,9 +253,13 @@ class _VoucherChangeState extends State<VoucherChange> {
           actions: [
             TextButton(
               onPressed: () {
+                // Đóng dialog
                 Navigator.pop(context);
-                // Quay về màn hình ví voucher
-                Navigator.pushReplacementNamed(context, '/voucher-wallet');
+                // Chuyển đến màn hình ví voucher, thay thế màn hình hiện tại
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VoucherWallet()),
+                );
               },
               child: const Text('Xem voucher'),
             ),
@@ -470,6 +481,12 @@ class _VoucherChangeState extends State<VoucherChange> {
     );
   }
 
+  /// Hàm refresh tổng hợp
+  Future<void> _refreshData() async {
+    await _loadUserData();
+    await _loadAvailableVouchers();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -477,10 +494,31 @@ class _VoucherChangeState extends State<VoucherChange> {
         title: const Text('Đổi Voucher'),
         backgroundColor: Colors.green[700],
         actions: [
+          // Nút reload ở góc phải
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: isLoading ? null : _refreshData,
+            tooltip: 'Làm mới',
+          ),
           if (currentUsername.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(child: Row()),
+              child: Center(
+                child: Row(
+                  children: [
+                    Icon(Icons.star, color: Colors.yellow[700], size: 20),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$userPoints',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
       ),
@@ -598,10 +636,7 @@ class _VoucherChangeState extends State<VoucherChange> {
                   else
                     Expanded(
                       child: RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadUserData();
-                          await _loadAvailableVouchers();
-                        },
+                        onRefresh: _refreshData,
                         child: ListView.builder(
                           itemCount: availableVouchers.length,
                           itemBuilder: (context, index) {
