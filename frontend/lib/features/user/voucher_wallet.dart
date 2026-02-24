@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/api_service.dart';
-// Import màn hình đổi voucher
 import 'voucher_change.dart';
 
 class VoucherWallet extends StatefulWidget {
@@ -14,13 +13,15 @@ class VoucherWallet extends StatefulWidget {
 }
 
 class _VoucherWalletState extends State<VoucherWallet>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   late TabController _tabController;
   String currentUsername = '';
   int userPoints = 0;
 
-  List<dynamic> myVouchers = []; // Tất cả voucher đã đổi
-  List<dynamic> expiredVouchers = []; // Tất cả voucher không thể sử dụng
+  List<dynamic> myVouchers =
+      []; // Voucher còn hiệu lực (chưa dùng, chưa hết hạn)
+  List<dynamic> expiredVouchers =
+      []; // Voucher không thể sử dụng (đã dùng, hết hạn)
 
   bool isLoadingUser = true;
   bool isLoadingVouchers = false;
@@ -33,9 +34,26 @@ class _VoucherWalletState extends State<VoucherWallet>
     _loadInitialData();
   }
 
-  /// =======================
-  /// KHỞI TẠO DỮ LIỆU BAN ĐẦU
-  /// =======================
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final routeObserver = RouteObserver<ModalRoute<void>>();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    final routeObserver = RouteObserver<ModalRoute<void>>();
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    _loadAllVoucherData();
+  }
+
   Future<void> _loadInitialData() async {
     await _loadUserData();
     if (mounted && currentUsername.isNotEmpty) {
@@ -48,9 +66,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     }
   }
 
-  /// =======================
-  /// LOAD USER DATA
-  /// =======================
   Future<void> _loadUserData() async {
     setState(() {
       isLoadingUser = true;
@@ -79,9 +94,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     }
   }
 
-  /// =======================
-  /// LOAD ALL VOUCHER DATA (ĐÃ SỬA)
-  /// =======================
   Future<void> _loadAllVoucherData() async {
     if (currentUsername.isEmpty) {
       setState(() {
@@ -99,7 +111,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     });
 
     try {
-      // Lấy danh sách voucher của user
       final userVouchersResponse = await ApiService.getUserVouchers(
         currentUsername,
       );
@@ -108,7 +119,6 @@ class _VoucherWalletState extends State<VoucherWallet>
       List<Map<String, dynamic>> tempMyVouchers = [];
       List<Map<String, dynamic>> tempExpiredVouchers = [];
 
-      // Tạo danh sách Future để lấy chi tiết từng voucher gốc
       final detailFutures = userVouchersResponse
           .map<Future<Map<String, dynamic>?>>((userVoucher) async {
             final voucherData = userVoucher as Map<String, dynamic>;
@@ -117,7 +127,7 @@ class _VoucherWalletState extends State<VoucherWallet>
             try {
               return await ApiService.getVoucherDetail(voucherId);
             } catch (e) {
-              print('Không thể lấy chi tiết voucher $voucherId: $e');
+              print('⚠️ Không thể lấy chi tiết voucher $voucherId: $e');
               return null;
             }
           })
@@ -125,7 +135,6 @@ class _VoucherWalletState extends State<VoucherWallet>
 
       final details = await Future.wait(detailFutures);
 
-      // Xử lý từng voucher cùng với chi tiết gốc tương ứng
       for (int i = 0; i < userVouchersResponse.length; i++) {
         final userVoucher = userVouchersResponse[i] as Map<String, dynamic>;
         final originalVoucher = details[i];
@@ -141,7 +150,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                     ) ??
                     1;
 
-          // Parse ngày hết hạn
           DateTime? expiredDate;
           try {
             expiredDate = DateTime.parse(expired);
@@ -151,7 +159,6 @@ class _VoucherWalletState extends State<VoucherWallet>
 
           final isExpired = expiredDate != null && expiredDate.isBefore(now);
 
-          // Đếm số lần user đã đổi voucher này (chưa sử dụng)
           final userExchangedCount = userVouchersResponse.where((v) {
             final vData = v as Map<String, dynamic>;
             final vId = vData['voucher_id']?.toString() ?? '';
@@ -160,14 +167,11 @@ class _VoucherWalletState extends State<VoucherWallet>
 
           final reachedLimit = userExchangedCount >= maxPerUser;
 
-          // Xác định lý do không thể sử dụng
           String? reason;
           if (status == 'used') {
             reason = 'Đã sử dụng';
           } else if (isExpired) {
             reason = 'Hết hạn';
-          } else if (reachedLimit) {
-            reason = 'Đã đạt giới hạn';
           }
 
           final voucherWithInfo = {
@@ -184,15 +188,30 @@ class _VoucherWalletState extends State<VoucherWallet>
             tempMyVouchers.add(voucherWithInfo);
           }
         } else {
-          // Không tìm thấy voucher gốc
-          tempExpiredVouchers.add({
+          // Không lấy được chi tiết voucher gốc
+          // Vẫn phải phân loại dựa trên status từ userVoucher
+          String? reason;
+          if (status == 'used') {
+            reason = 'Đã sử dụng';
+          }
+          // Không có thông tin hết hạn, nếu không phải 'used' thì tạm coi là còn hiệu lực
+          final voucherWithInfo = {
             ...userVoucher,
-            'reason': 'Voucher không tồn tại',
-          });
+            'original_voucher': null,
+            'reason': reason,
+            'isExpired': false,
+            'reachedLimit': false,
+          };
+
+          if (reason != null) {
+            tempExpiredVouchers.add(voucherWithInfo);
+          } else {
+            tempMyVouchers.add(voucherWithInfo);
+          }
         }
       }
 
-      // Sắp xếp: voucher chưa dùng lên đầu
+      // Sắp xếp: voucher chưa dùng lên đầu (chỉ có ý nghĩa trong tab "VOUCHER CỦA TÔI")
       tempMyVouchers.sort((a, b) {
         final statusA = a['status']?.toString() ?? 'usable';
         final statusB = b['status']?.toString() ?? 'usable';
@@ -209,7 +228,7 @@ class _VoucherWalletState extends State<VoucherWallet>
         });
       }
     } catch (e) {
-      print('Lỗi khi load voucher data: $e');
+      print('🔥 Lỗi khi load voucher data: $e');
       if (mounted) {
         setState(() {
           errorMessage =
@@ -220,9 +239,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     }
   }
 
-  /// =======================
-  /// TÍNH TOÁN SỐ TIỀN ĐƯỢC GIẢM
-  /// =======================
   double _calculateDiscountAmount(int point) {
     if (point > 0) {
       final multiplier = point / 500.0;
@@ -231,9 +247,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     return 0.0;
   }
 
-  /// =======================
-  /// FORMAT SỐ TIỀN
-  /// =======================
   String _formatCurrency(double amount) {
     return amount.toInt().toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -241,14 +254,10 @@ class _VoucherWalletState extends State<VoucherWallet>
     );
   }
 
-  /// =======================
-  /// MARK VOUCHER AS USED
-  /// =======================
   Future<void> _useVoucher(
     String voucherId,
     Map<String, dynamic> voucher,
   ) async {
-    // Ưu tiên lấy partner và point từ voucher (userVoucher) trước, fallback sang original_voucher
     final partner =
         voucher['partner']?.toString() ??
         (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
@@ -258,7 +267,6 @@ class _VoucherWalletState extends State<VoucherWallet>
               ? voucher['original_voucher']['point']
               : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0);
 
-    // Show QR dialog
     final qrData =
         'VOUCHER|$currentUsername|$point|$partner|${DateTime.now().toIso8601String()}';
 
@@ -336,7 +344,6 @@ class _VoucherWalletState extends State<VoucherWallet>
 
     if (confirmed != true) return;
 
-    // Show loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -353,14 +360,10 @@ class _VoucherWalletState extends State<VoucherWallet>
     );
 
     try {
-      // Call API to mark voucher as used
       final success = await ApiService.markVoucherUsed(voucherId);
-
-      // Close loading dialog
       if (mounted) Navigator.pop(context);
 
       if (success) {
-        // Show success message
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -370,7 +373,6 @@ class _VoucherWalletState extends State<VoucherWallet>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  // Reload vouchers
                   _loadAllVoucherData();
                 },
                 child: const Text('OK'),
@@ -382,9 +384,7 @@ class _VoucherWalletState extends State<VoucherWallet>
         _showError('Không thể đánh dấu voucher đã sử dụng');
       }
     } catch (e) {
-      // Close loading dialog
       if (mounted) Navigator.pop(context);
-
       _showError('Lỗi khi sử dụng voucher: ${e.toString()}');
     }
   }
@@ -395,11 +395,7 @@ class _VoucherWalletState extends State<VoucherWallet>
     );
   }
 
-  /// =======================
-  /// BUILD VOUCHER CARD FOR MY VOUCHERS (ĐÃ SỬA)
-  /// =======================
   Widget _buildMyVoucherCard(Map<String, dynamic> voucher) {
-    // Ưu tiên lấy từ voucher (userVoucher) trước, fallback sang original_voucher
     final partner =
         voucher['partner']?.toString() ??
         (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
@@ -413,19 +409,15 @@ class _VoucherWalletState extends State<VoucherWallet>
     final usedAt = voucher['used_at']?.toString();
     final voucherId = voucher['_id']?.toString() ?? '';
 
-    // Tính số tiền được giảm
     final discountAmount = _calculateDiscountAmount(point);
 
-    // Parse dates
     DateTime? exchangedDate;
     DateTime? usedDate;
-
     try {
       exchangedDate = DateTime.parse(exchangedAt);
     } catch (e) {
       exchangedDate = null;
     }
-
     if (usedAt != null && usedAt.isNotEmpty && usedAt != 'null') {
       try {
         usedDate = DateTime.parse(usedAt);
@@ -480,10 +472,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                 ),
               ],
             ),
-
             const SizedBox(height: 8),
-
-            // Hiển thị số tiền được giảm
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -519,9 +508,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
-
             if (exchangedDate != null)
               Row(
                 children: [
@@ -533,7 +520,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                   ),
                 ],
               ),
-
             if (usedDate != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -548,9 +534,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                   ],
                 ),
               ),
-
             const SizedBox(height: 16),
-
             SizedBox(
               width: double.infinity,
               child: !isUsed
@@ -598,11 +582,7 @@ class _VoucherWalletState extends State<VoucherWallet>
     );
   }
 
-  /// =======================
-  /// BUILD EXPIRED VOUCHER CARD (ĐÃ SỬA)
-  /// =======================
   Widget _buildExpiredVoucherCard(Map<String, dynamic> voucher) {
-    // Ưu tiên lấy từ voucher (userVoucher) trước, fallback sang original_voucher
     final partner =
         voucher['partner']?.toString() ??
         (voucher['original_voucher']?['partner']?.toString() ?? 'Unknown');
@@ -616,16 +596,13 @@ class _VoucherWalletState extends State<VoucherWallet>
     final exchangedAt = voucher['exchanged_at']?.toString() ?? '';
     final usedAt = voucher['used_at']?.toString();
 
-    // Parse dates
     DateTime? exchangedDate;
     DateTime? usedDate;
-
     try {
       exchangedDate = DateTime.parse(exchangedAt);
     } catch (e) {
       exchangedDate = null;
     }
-
     if (usedAt != null && usedAt.isNotEmpty && usedAt != 'null') {
       try {
         usedDate = DateTime.parse(usedAt);
@@ -635,8 +612,6 @@ class _VoucherWalletState extends State<VoucherWallet>
     }
 
     final isUsed = status == 'used';
-
-    // Tính số tiền được giảm
     final discountAmount = _calculateDiscountAmount(point);
 
     return Card(
@@ -682,10 +657,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                 ),
               ],
             ),
-
             const SizedBox(height: 8),
-
-            // Hiển thị số tiền được giảm
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -718,10 +690,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // Hiển thị lý do
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -749,9 +718,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                 ],
               ),
             ),
-
             const SizedBox(height: 12),
-
             if (exchangedDate != null)
               Row(
                 children: [
@@ -763,7 +730,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                   ),
                 ],
               ),
-
             if (usedDate != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -778,9 +744,7 @@ class _VoucherWalletState extends State<VoucherWallet>
                   ],
                 ),
               ),
-
             const SizedBox(height: 16),
-
             SizedBox(
               width: double.infinity,
               child: Container(
@@ -923,7 +887,6 @@ class _VoucherWalletState extends State<VoucherWallet>
           : TabBarView(
               controller: _tabController,
               children: [
-                // Tab 1: Voucher của tôi (còn hiệu lực)
                 RefreshIndicator(
                   onRefresh: _loadAllVoucherData,
                   child: myVouchers.isEmpty
@@ -950,7 +913,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                                 style: TextStyle(color: Colors.grey),
                               ),
                               const SizedBox(height: 20),
-                              // Nút Đổi voucher
                               ElevatedButton.icon(
                                 onPressed: () {
                                   Navigator.push(
@@ -991,8 +953,6 @@ class _VoucherWalletState extends State<VoucherWallet>
                           },
                         ),
                 ),
-
-                // Tab 2: Hết hạn/Đã sử dụng/Đạt giới hạn
                 RefreshIndicator(
                   onRefresh: _loadAllVoucherData,
                   child: expiredVouchers.isEmpty
@@ -1037,11 +997,5 @@ class _VoucherWalletState extends State<VoucherWallet>
               ],
             ),
     );
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 }

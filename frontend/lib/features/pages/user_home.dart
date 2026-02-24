@@ -609,166 +609,6 @@ class _UserHomeState extends State<UserHome> {
             const SizedBox(height: 24),
 
             /// =======================
-            /// PARTNER CAROUSEL (CHẠY NGANG) - ĐÃ CHỈNH SỬA THEO YÊU CẦU
-            /// =======================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Quán đối tác nổi bật',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1B5E20),
-                  ),
-                ),
-                InkWell(
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const PartnerList()),
-                    );
-                    _reloadPoint();
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          'Xem tất cả',
-                          style: TextStyle(
-                            color: Colors.green.shade700,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          size: 12,
-                          color: Colors.green,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Carousel partners với thiết kế mới - ĐÃ BỎ SỐ VÀ CÓ NỀN TRẮNG
-            SizedBox(
-              height: 140, // Giảm chiều cao cho phù hợp
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: _partners.length,
-                itemBuilder: (context, index) {
-                  final partner = _partners[index];
-
-                  return GestureDetector(
-                    onTap: () => _showPartnerDialog(index),
-                    onLongPress: () => _openGoogleMaps(index),
-                    child: Container(
-                      width: 110, // Giảm chiều rộng card
-                      margin: EdgeInsets.only(right: 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          // Card partner với hình ảnh - NỀN TRẮNG HOÀN TOÀN
-                          Container(
-                            height: 100,
-                            width: 100,
-                            decoration: BoxDecoration(
-                              color: Colors.white, // Nền trắng hoàn toàn
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.2),
-                                  blurRadius: 8,
-                                  offset: Offset(0, 4),
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                              border: Border.all(
-                                color: Colors.green.shade100,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Center(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.asset(
-                                    partner['image'] as String,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Center(
-                                        child: Icon(
-                                          Icons.store,
-                                          size: 32,
-                                          color: Colors.green.shade400,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 8),
-
-                          // Tên nhà cung cấp - rút gọn và căn giữa
-                          Container(
-                            width: 110,
-                            child: Text(
-                              partner['name'] as String,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.green[900],
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // Hướng dẫn
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.touch_app, size: 14, color: Colors.green),
-                  SizedBox(width: 6),
-                  Text(
-                    'Chạm để xem chi tiết • Giữ để mở bản đồ',
-                    style: TextStyle(
-                      color: Colors.green[800],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            /// =======================
             /// MAIN BUTTONS
             /// =======================
             Container(
@@ -891,6 +731,165 @@ class _UserHomeState extends State<UserHome> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            /// =======================
+            /// PARTNER CAROUSEL (ĐÃ CHUYỂN XUỐNG DƯỚI)
+            /// =======================
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Quán đối tác nổi bật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1B5E20),
+                  ),
+                ),
+                InkWell(
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PartnerList()),
+                    );
+                    _reloadPoint();
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Xem tất cả',
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 12,
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Carousel partners với thiết kế mới - NỀN TRẮNG, BỎ SỐ
+            SizedBox(
+              height: 140,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _partners.length,
+                itemBuilder: (context, index) {
+                  final partner = _partners[index];
+
+                  return GestureDetector(
+                    onTap: () => _showPartnerDialog(index),
+                    onLongPress: () => _openGoogleMaps(index),
+                    child: Container(
+                      width: 110,
+                      margin: EdgeInsets.only(right: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          // Card partner với hình ảnh - NỀN TRẮNG HOÀN TOÀN
+                          Container(
+                            height: 100,
+                            width: 100,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 4),
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                              border: Border.all(
+                                color: Colors.green.shade100,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Center(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.asset(
+                                    partner['image'] as String,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Center(
+                                        child: Icon(
+                                          Icons.store,
+                                          size: 32,
+                                          color: Colors.green.shade400,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+
+                          // Tên nhà cung cấp - rút gọn và căn giữa
+                          Container(
+                            width: 110,
+                            child: Text(
+                              partner['name'] as String,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.green[900],
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Hướng dẫn
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.touch_app, size: 14, color: Colors.green),
+                  SizedBox(width: 6),
+                  Text(
+                    'Chạm để xem chi tiết • Giữ để mở bản đồ',
+                    style: TextStyle(
+                      color: Colors.green[800],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],

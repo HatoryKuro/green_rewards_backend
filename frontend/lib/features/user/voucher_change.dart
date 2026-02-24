@@ -253,9 +253,8 @@ class _VoucherChangeState extends State<VoucherChange> {
           actions: [
             TextButton(
               onPressed: () {
-                // Đóng dialog
-                Navigator.pop(context);
-                // Chuyển đến màn hình ví voucher, thay thế màn hình hiện tại
+                Navigator.pop(context); // đóng dialog
+                // Thay thế màn hình hiện tại (VoucherChange) bằng VoucherWallet mới
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const VoucherWallet()),

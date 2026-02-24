@@ -11,32 +11,79 @@ class HistoryPoint extends StatefulWidget {
 }
 
 class _HistoryPointState extends State<HistoryPoint> {
-  late Future<Map<String, dynamic>> _futureUser;
   Map<String, dynamic>? userData;
+  List<dynamic> _combinedHistory = [];
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadUserHistory();
+    _loadData();
   }
 
-  Future<void> _loadUserHistory() async {
+  Future<void> _loadData() async {
+    setState(() => isLoading = true);
     try {
-      final data = await ApiService.getUserByUsername(widget.username);
+      final userFuture = ApiService.getUserByUsername(widget.username);
+      final vouchersFuture = ApiService.getUserVouchers(widget.username);
+
+      final results = await Future.wait([userFuture, vouchersFuture]);
+      final user = results[0] as Map<String, dynamic>?;
+      final vouchers = results[1] as List<dynamic>;
+
+      List<dynamic> allHistory = [];
+
+      if (user != null && user['history'] != null) {
+        allHistory.addAll(List.from(user['history']));
+      }
+
+      for (var voucher in vouchers) {
+        if (voucher['exchanged_at'] != null) {
+          int point = voucher['point'] ?? 0;
+          String partner = voucher['partner'] ?? 'Đối tác';
+          String exchangedAt = voucher['exchanged_at'];
+          allHistory.add({
+            'type': 'exchange',
+            'point': -point,
+            'partner': partner,
+            'time': exchangedAt,
+            'message': 'Đổi voucher $partner',
+          });
+        }
+      }
+
+      allHistory.sort((a, b) {
+        DateTime timeA = _parseDateTime(a['time'] ?? '');
+        DateTime timeB = _parseDateTime(b['time'] ?? '');
+        return timeB.compareTo(timeA);
+      });
+
       setState(() {
-        userData = data;
+        userData = user;
+        _combinedHistory = allHistory;
         isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-      print('Error loading user history: $e');
+      setState(() => isLoading = false);
+      print('Error loading history: $e');
     }
   }
 
-  Icon getIcon(String? type) {
+  DateTime _parseDateTime(String timeStr) {
+    try {
+      return DateTime.parse(timeStr);
+    } catch (e) {
+      return DateTime.now();
+    }
+  }
+
+  // Helper lấy type viết thường
+  String? _normalizedType(Map<String, dynamic> item) {
+    return item['type']?.toString().toLowerCase();
+  }
+
+  Icon getIcon(Map<String, dynamic> item) {
+    final type = _normalizedType(item);
     switch (type) {
       case 'add':
         return const Icon(Icons.add_circle, color: Colors.green);
@@ -51,7 +98,8 @@ class _HistoryPointState extends State<HistoryPoint> {
     }
   }
 
-  Color getColor(String? type) {
+  Color getColor(Map<String, dynamic> item) {
+    final type = _normalizedType(item);
     switch (type) {
       case 'add':
         return Colors.green.shade50;
@@ -66,7 +114,8 @@ class _HistoryPointState extends State<HistoryPoint> {
     }
   }
 
-  Color getTextColor(String? type) {
+  Color getTextColor(Map<String, dynamic> item) {
+    final type = _normalizedType(item);
     switch (type) {
       case 'add':
         return Colors.green.shade900;
@@ -81,13 +130,15 @@ class _HistoryPointState extends State<HistoryPoint> {
     }
   }
 
-  String formatPoint(int point, String? type) {
+  String formatPoint(int point, Map<String, dynamic> item) {
+    final type = _normalizedType(item);
     if (type == 'reset') return 'Về 0';
     if (point > 0) return '+$point';
     return '$point';
   }
 
-  String getTypeTitle(String? type) {
+  String getTypeTitle(Map<String, dynamic> item) {
+    final type = _normalizedType(item);
     switch (type) {
       case 'add':
         return 'TÍCH ĐIỂM';
@@ -103,7 +154,7 @@ class _HistoryPointState extends State<HistoryPoint> {
   }
 
   String formatMessage(Map<String, dynamic> history) {
-    final type = history['type'] ?? '';
+    final type = _normalizedType(history);
     final message = history['message'] ?? '';
     final partner = history['partner'] ?? '';
     final resetBy = history['reset_by'] ?? '';
@@ -120,7 +171,6 @@ class _HistoryPointState extends State<HistoryPoint> {
     } else if (type == 'exchange' && partner.isNotEmpty) {
       return 'Đổi voucher $partner';
     }
-
     return message;
   }
 
@@ -131,20 +181,12 @@ class _HistoryPointState extends State<HistoryPoint> {
         title: const Text('Lịch sử điểm'),
         backgroundColor: Colors.green,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                isLoading = true;
-              });
-              _loadUserHistory();
-            },
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
         ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : userData == null
+          : userData == null && _combinedHistory.isEmpty
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -163,7 +205,7 @@ class _HistoryPointState extends State<HistoryPoint> {
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
-                      onPressed: _loadUserHistory,
+                      onPressed: _loadData,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                       ),
@@ -178,14 +220,11 @@ class _HistoryPointState extends State<HistoryPoint> {
   }
 
   Widget _buildHistoryContent() {
-    final user = userData!;
-    final List historyRaw = user['history'] ?? [];
-    final int totalPoint = user['point'] is num
-        ? (user['point'] as num).toInt()
+    final totalPoint = userData != null && userData!['point'] is num
+        ? (userData!['point'] as num).toInt()
         : 0;
-    final List history = historyRaw.reversed.toList();
 
-    if (history.isEmpty) {
+    if (_combinedHistory.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -207,13 +246,16 @@ class _HistoryPointState extends State<HistoryPoint> {
       );
     }
 
-    final addHistory = history.where((h) => h['type'] == 'add').toList();
-    final exchangeHistory = history
-        .where((h) => h['type'] == 'exchange')
-        .toList();
-    final otherHistory = history
-        .where((h) => h['type'] != 'add' && h['type'] != 'exchange')
-        .toList();
+    // Lọc lịch sử: exchange (đổi voucher) và không phải exchange (đổi điểm)
+    final exchangeHistory = _combinedHistory.where((h) {
+      final type = h['type']?.toString().toLowerCase();
+      return type == 'exchange';
+    }).toList();
+
+    final nonExchangeHistory = _combinedHistory.where((h) {
+      final type = h['type']?.toString().toLowerCase();
+      return type != 'exchange';
+    }).toList();
 
     return Column(
       children: [
@@ -244,7 +286,7 @@ class _HistoryPointState extends State<HistoryPoint> {
               ),
               const SizedBox(height: 16),
               Text(
-                user["username"] ?? '',
+                widget.username,
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -274,27 +316,27 @@ class _HistoryPointState extends State<HistoryPoint> {
 
         Expanded(
           child: DefaultTabController(
-            length: 3,
+            length: 2, // Chỉ còn 2 tab
             child: Column(
               children: [
                 Container(
                   color: Colors.green.shade50,
-                  child: TabBar(
+                  child: const TabBar(
                     labelColor: Colors.green,
                     unselectedLabelColor: Colors.grey,
                     indicatorColor: Colors.green,
-                    tabs: const [
-                      Tab(text: 'TẤT CẢ'),
-                      Tab(text: 'TÍCH ĐIỂM'),
-                      Tab(text: 'ĐỔI VOUCHER'),
+                    tabs: [
+                      Tab(text: 'ĐỔI ĐIỂM'), // Tab đầu tiên đổi tên
+                      Tab(text: 'ĐỔI VOUCHER'), // Giữ nguyên
                     ],
                   ),
                 ),
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _buildHistoryList(history, 'Tất cả giao dịch'),
-                      _buildHistoryList(addHistory, 'Lịch sử tích điểm'),
+                      // Tab "Đổi điểm" hiển thị tất cả giao dịch không phải exchange
+                      _buildHistoryList(nonExchangeHistory, 'Lịch sử đổi điểm'),
+                      // Tab "Đổi voucher" chỉ hiển thị exchange
                       _buildHistoryList(exchangeHistory, 'Lịch sử đổi voucher'),
                     ],
                   ),
@@ -329,7 +371,6 @@ class _HistoryPointState extends State<HistoryPoint> {
       itemCount: history.length,
       itemBuilder: (_, index) {
         final h = history[index];
-        final String type = h['type'] ?? '';
         final int p = h['point'] is num ? (h['point'] as num).toInt() : 0;
         final partner = h['partner'] ?? '';
         final billCode = h['bill'] ?? '';
@@ -341,7 +382,7 @@ class _HistoryPointState extends State<HistoryPoint> {
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: getColor(type),
+            color: getColor(h),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: Colors.green.shade100, width: 1),
             boxShadow: [
@@ -361,7 +402,7 @@ class _HistoryPointState extends State<HistoryPoint> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: getColor(type).withOpacity(0.8),
+                  color: getColor(h).withOpacity(0.8),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(15),
                     topRight: Radius.circular(15),
@@ -369,20 +410,20 @@ class _HistoryPointState extends State<HistoryPoint> {
                 ),
                 child: Row(
                   children: [
-                    getIcon(type),
+                    getIcon(h),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        getTypeTitle(type),
+                        getTypeTitle(h),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: getTextColor(type),
+                          color: getTextColor(h),
                         ),
                       ),
                     ),
                     Text(
-                      formatPoint(p, type),
+                      formatPoint(p, h),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
@@ -476,7 +517,7 @@ class _HistoryPointState extends State<HistoryPoint> {
                         ),
                       ),
 
-                    if (type == 'reset')
+                    if (_normalizedType(h) == 'reset')
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Column(
