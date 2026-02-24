@@ -205,6 +205,16 @@ def mark_voucher_used(voucher_id):
         return json_error("Database không khả dụng", 503)
     
     try:
+        # Kiểm tra voucher có tồn tại không
+        voucher = user_vouchers.find_one({"_id": ObjectId(voucher_id)})
+        if not voucher:
+            return json_error("Voucher không tồn tại", 404)
+        
+        # 🚨 KIỂM TRA: Nếu đã used rồi thì báo lỗi
+        if voucher.get("status") == "used":
+            return json_error("Voucher đã được sử dụng trước đó", 400)
+        
+        # Cập nhật
         result = user_vouchers.update_one(
             {"_id": ObjectId(voucher_id)},
             {"$set": {"status": "used", "used_at": datetime.now()}}
@@ -213,7 +223,7 @@ def mark_voucher_used(voucher_id):
         if result.modified_count == 1:
             return jsonify({"message": "Đánh dấu voucher đã sử dụng thành công"}), 200
         else:
-            return json_error("Voucher không tồn tại", 404)
+            return json_error("Không thể cập nhật voucher", 500)
     except Exception as e:
         return json_error(f"Lỗi: {str(e)}", 500)
 

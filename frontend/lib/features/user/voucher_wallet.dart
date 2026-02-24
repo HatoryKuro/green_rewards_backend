@@ -254,6 +254,8 @@ class _VoucherWalletState extends State<VoucherWallet>
     );
   }
 
+  // ... (giữ nguyên phần import và code phía trên)
+
   Future<void> _useVoucher(
     String voucherId,
     Map<String, dynamic> voucher,
@@ -267,8 +269,9 @@ class _VoucherWalletState extends State<VoucherWallet>
               ? voucher['original_voucher']['point']
               : int.tryParse(voucher['point']?.toString() ?? '0') ?? 0);
 
+    // 👇 SỬA: thêm voucherId vào QR data
     final qrData =
-        'VOUCHER|$currentUsername|$point|$partner|${DateTime.now().toIso8601String()}';
+        'VOUCHER|$voucherId|$currentUsername|$point|$partner|${DateTime.now().toIso8601String()}';
 
     final confirmed = await showDialog<bool>(
       context: context,

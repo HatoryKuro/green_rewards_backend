@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/api_service.dart';
-import 'voucher_wallet.dart'; // Thêm import để điều hướng
+import 'voucher_wallet.dart'; // Điều hướng sang ví voucher sau khi đổi thành công
 
+/// Màn hình cho phép người dùng đổi điểm lấy voucher
 class VoucherChange extends StatefulWidget {
   final String? voucherId;
   final Map<String, dynamic>? voucherData;
@@ -14,22 +15,20 @@ class VoucherChange extends StatefulWidget {
 }
 
 class _VoucherChangeState extends State<VoucherChange> {
-  List<dynamic> availableVouchers = [];
-  bool isLoading = false;
-  String errorMessage = '';
-  String currentUsername = '';
-  int userPoints = 0;
+  List<dynamic> availableVouchers = []; // Danh sách voucher có thể đổi
+  bool isLoading = false; // Đang tải dữ liệu
+  String errorMessage = ''; // Thông báo lỗi
+  String currentUsername = ''; // Tên người dùng hiện tại
+  int userPoints = 0; // Số điểm hiện có
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
-    _loadAvailableVouchers();
+    _loadUserData(); // Tải thông tin người dùng
+    _loadAvailableVouchers(); // Tải danh sách voucher
   }
 
-  /// =======================
-  /// LOAD USER DATA
-  /// =======================
+  /// ==================== TẢI THÔNG TIN NGƯỜI DÙNG ====================
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString('username') ?? '';
@@ -41,26 +40,23 @@ class _VoucherChangeState extends State<VoucherChange> {
         userPoints = points;
       });
     } else {
-      // Nếu không có trong prefs, thử lấy từ API
+      // Nếu không có trong SharedPreferences, thử lấy từ API
       try {
         final userInfo = await ApiService.getUserByUsername(username);
         if (userInfo != null && mounted) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('point', userInfo["point"] ?? 0);
-
           setState(() {
             userPoints = userInfo["point"] ?? 0;
           });
         }
       } catch (e) {
-        print('Lỗi khi load user points: $e');
+        // Lỗi load user – không cần in, chỉ cần hiển thị thông báo sau
       }
     }
   }
 
-  /// =======================
-  /// LOAD AVAILABLE VOUCHERS FROM API
-  /// =======================
+  /// ==================== TẢI DANH SÁCH VOUCHER CÓ THỂ ĐỔI ====================
   Future<void> _loadAvailableVouchers() async {
     setState(() {
       isLoading = true;
@@ -79,7 +75,7 @@ class _VoucherChangeState extends State<VoucherChange> {
         }
       });
     } catch (e) {
-      print('Lỗi khi load available vouchers: $e');
+      // Lỗi kết nối hoặc xử lý – hiển thị thông báo cho người dùng
       setState(() {
         errorMessage =
             'Không thể tải danh sách voucher. Vui lòng kiểm tra kết nối và thử lại.';
@@ -92,9 +88,7 @@ class _VoucherChangeState extends State<VoucherChange> {
     }
   }
 
-  /// =======================
-  /// TÍNH TOÁN SỐ TIỀN ĐƯỢC GIẢM
-  /// =======================
+  /// ==================== TÍNH SỐ TIỀN GIẢM DỰA TRÊN ĐIỂM ====================
   double _calculateDiscountAmount(int point) {
     // Công thức: 500 điểm = 10.000đ
     if (point > 0) {
@@ -104,9 +98,7 @@ class _VoucherChangeState extends State<VoucherChange> {
     return 0.0;
   }
 
-  /// =======================
-  /// FORMAT SỐ TIỀN
-  /// =======================
+  /// ==================== ĐỊNH DẠNG TIỀN TỆ (VD: 10,000) ====================
   String _formatCurrency(double amount) {
     return amount.toInt().toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -114,16 +106,15 @@ class _VoucherChangeState extends State<VoucherChange> {
     );
   }
 
-  /// =======================
-  /// EXCHANGE VOUCHER
-  /// =======================
+  /// ==================== XỬ LÝ ĐỔI VOUCHER ====================
   Future<void> _exchangeVoucher(
     String voucherId,
     int point,
     String partner,
+    int maxPerUser,
+    int exchangedCount, // Số lần user đã đổi voucher này (do server cung cấp)
   ) async {
-    final discountAmount = _calculateDiscountAmount(point);
-
+    // Kiểm tra thông tin người dùng
     if (currentUsername.isEmpty) {
       _showError(
         'Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.',
@@ -131,12 +122,21 @@ class _VoucherChangeState extends State<VoucherChange> {
       return;
     }
 
+    // Kiểm tra đủ điểm
     if (userPoints < point) {
       _showError(
         'Bạn không đủ điểm để đổi voucher này. Cần $point điểm, bạn có $userPoints điểm.',
       );
       return;
     }
+
+    // Kiểm tra giới hạn số lần đổi (maxPerUser)
+    if (exchangedCount >= maxPerUser) {
+      _showError('Bạn đã đạt giới hạn đổi voucher này ($maxPerUser lần).');
+      return;
+    }
+
+    final discountAmount = _calculateDiscountAmount(point);
 
     // Xác nhận đổi voucher
     final confirm = await showDialog<bool>(
@@ -211,20 +211,17 @@ class _VoucherChangeState extends State<VoucherChange> {
     );
 
     try {
-      // Gọi API để đổi voucher
+      // Gọi API đổi voucher
       final result = await ApiService.exchangeVoucher(
         username: currentUsername,
         voucherId: voucherId,
       );
 
-      // Cập nhật điểm mới
+      // Cập nhật điểm mới từ server
       final newPoints = result['new_point'] ?? userPoints - point;
-
-      // Lưu điểm mới vào SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('point', newPoints);
 
-      // Cập nhật state userPoints
       setState(() {
         userPoints = newPoints;
       });
@@ -232,7 +229,10 @@ class _VoucherChangeState extends State<VoucherChange> {
       // Đóng dialog loading
       if (mounted) Navigator.pop(context);
 
-      // Hiển thị thành công
+      // Tải lại danh sách voucher để cập nhật exchanged_count (nếu server hỗ trợ)
+      await _loadAvailableVouchers();
+
+      // Hiển thị thành công và chuyển sang ví voucher
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -254,7 +254,6 @@ class _VoucherChangeState extends State<VoucherChange> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context); // đóng dialog
-                // Thay thế màn hình hiện tại (VoucherChange) bằng VoucherWallet mới
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const VoucherWallet()),
@@ -266,7 +265,7 @@ class _VoucherChangeState extends State<VoucherChange> {
         ),
       );
     } catch (e) {
-      // Đóng dialog loading
+      // Đóng dialog loading nếu có lỗi
       if (mounted) Navigator.pop(context);
 
       String errorMsg = 'Lỗi khi đổi voucher';
@@ -277,16 +276,16 @@ class _VoucherChangeState extends State<VoucherChange> {
     }
   }
 
+  /// Hiển thị thông báo lỗi dạng SnackBar
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
-  /// =======================
-  /// BUILD VOUCHER CARD
-  /// =======================
+  /// ==================== XÂY DỰNG THẺ VOUCHER ====================
   Widget _buildVoucherCard(Map<String, dynamic> voucher) {
+    // Lấy các trường từ dữ liệu voucher
     final partner = voucher['partner']?.toString() ?? 'Unknown';
     final point = voucher['point'] is int
         ? voucher['point']
@@ -297,7 +296,12 @@ class _VoucherChangeState extends State<VoucherChange> {
     final expired = voucher['expired']?.toString() ?? '';
     final voucherId = voucher['_id']?.toString() ?? '';
 
-    // Parse expired date
+    // Số lần user đã đổi voucher này (do server trả về, mặc định 0 nếu không có)
+    final exchangedCount = voucher['exchanged_count'] is int
+        ? voucher['exchanged_count']
+        : int.tryParse(voucher['exchanged_count']?.toString() ?? '0') ?? 0;
+
+    // Parse ngày hết hạn
     DateTime? expiredDate;
     try {
       expiredDate = DateTime.parse(expired);
@@ -305,13 +309,15 @@ class _VoucherChangeState extends State<VoucherChange> {
       expiredDate = null;
     }
 
-    final canExchange = userPoints >= point;
+    // Tính toán trạng thái
     final daysLeft = expiredDate != null
         ? expiredDate.difference(DateTime.now()).inDays
         : 0;
     final isExpired = expiredDate != null && daysLeft < 0;
+    final hasEnoughPoints = userPoints >= point;
+    final hasReachedLimit = exchangedCount >= maxPerUser; // Đã đạt giới hạn?
+    final canExchange = hasEnoughPoints && !isExpired && !hasReachedLimit;
 
-    // Tính số tiền được giảm
     final discountAmount = _calculateDiscountAmount(point);
 
     return Card(
@@ -322,6 +328,7 @@ class _VoucherChangeState extends State<VoucherChange> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header: Tên đối tác + điểm
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -359,7 +366,7 @@ class _VoucherChangeState extends State<VoucherChange> {
 
             const SizedBox(height: 8),
 
-            // Hiển thị số tiền được giảm NỔI BẬT
+            // Hiển thị số tiền giảm nổi bật
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -395,19 +402,23 @@ class _VoucherChangeState extends State<VoucherChange> {
 
             const SizedBox(height: 12),
 
+            // Giới hạn đổi
             Row(
               children: [
                 Icon(Icons.repeat, size: 16, color: Colors.grey[600]),
                 const SizedBox(width: 4),
-                Text(
-                  'Giới hạn: $maxPerUser lần/user',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                Expanded(
+                  child: Text(
+                    'Giới hạn: $maxPerUser lần/user (đã đổi $exchangedCount lần)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
                 ),
               ],
             ),
 
             const SizedBox(height: 4),
 
+            // Ngày hết hạn
             Row(
               children: [
                 Icon(
@@ -432,31 +443,38 @@ class _VoucherChangeState extends State<VoucherChange> {
 
             const SizedBox(height: 16),
 
+            // Nút đổi voucher (xám nếu không thể đổi)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: canExchange && !isExpired
-                      ? Colors.green
-                      : Colors.grey,
+                  backgroundColor: canExchange ? Colors.green : Colors.grey,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: canExchange && !isExpired
-                    ? () => _exchangeVoucher(voucherId, point, partner)
+                onPressed: canExchange
+                    ? () => _exchangeVoucher(
+                        voucherId,
+                        point,
+                        partner,
+                        maxPerUser,
+                        exchangedCount,
+                      )
                     : null,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (!canExchange) const Icon(Icons.warning, size: 20),
-                    if (!canExchange) const SizedBox(width: 8),
+                    if (!hasEnoughPoints) const Icon(Icons.warning, size: 20),
+                    if (!hasEnoughPoints) const SizedBox(width: 8),
                     Text(
-                      canExchange && !isExpired
+                      canExchange
                           ? 'ĐỔI VOUCHER'
                           : isExpired
                           ? 'ĐÃ HẾT HẠN'
+                          : hasReachedLimit
+                          ? 'ĐÃ ĐẠT GIỚI HẠN'
                           : 'KHÔNG ĐỦ ĐIỂM',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
@@ -465,12 +483,24 @@ class _VoucherChangeState extends State<VoucherChange> {
               ),
             ),
 
-            if (!canExchange)
+            // Hiển thị thông báo phụ nếu thiếu điểm
+            if (!hasEnoughPoints && !isExpired && !hasReachedLimit)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Bạn cần $point điểm, hiện có $userPoints điểm',
                   style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+            // Hiển thị thông báo phụ nếu đã đạt giới hạn
+            if (hasReachedLimit && !isExpired)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Bạn đã đổi đủ $maxPerUser lần cho voucher này',
+                  style: TextStyle(fontSize: 12, color: Colors.red[700]),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -480,7 +510,7 @@ class _VoucherChangeState extends State<VoucherChange> {
     );
   }
 
-  /// Hàm refresh tổng hợp
+  /// Làm mới dữ liệu (kéo xuống hoặc nhấn nút reload)
   Future<void> _refreshData() async {
     await _loadUserData();
     await _loadAvailableVouchers();
@@ -493,12 +523,13 @@ class _VoucherChangeState extends State<VoucherChange> {
         title: const Text('Đổi Voucher'),
         backgroundColor: Colors.green[700],
         actions: [
-          // Nút reload ở góc phải
+          // Nút reload
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: isLoading ? null : _refreshData,
             tooltip: 'Làm mới',
           ),
+          // Hiển thị điểm hiện tại
           if (currentUsername.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -524,7 +555,7 @@ class _VoucherChangeState extends State<VoucherChange> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Info card
+          // Thanh thông tin người dùng
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.green.shade50,
@@ -551,7 +582,6 @@ class _VoucherChangeState extends State<VoucherChange> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 4),
                     ],
                   ),
                 ),
@@ -559,7 +589,7 @@ class _VoucherChangeState extends State<VoucherChange> {
             ),
           ),
 
-          // Main content
+          // Nội dung chính
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),

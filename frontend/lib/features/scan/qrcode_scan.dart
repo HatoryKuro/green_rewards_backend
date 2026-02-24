@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../core/services/api_service.dart';
 
+/// Màn hình quét QR dành cho admin:
+/// - Quét mã USERQR để cộng điểm cho user (hiện dialog nhập thông tin)
+/// - Quét mã VOUCHER để đánh dấu voucher đã sử dụng (hiện dialog xác nhận)
 class ScanQR extends StatefulWidget {
   const ScanQR({super.key});
 
@@ -9,15 +12,30 @@ class ScanQR extends StatefulWidget {
   State<ScanQR> createState() => _ScanPageState();
 }
 
-class _ScanPageState extends State<ScanQR> {
-  bool scanned = false;
+class _ScanPageState extends State<ScanQR> with SingleTickerProviderStateMixin {
+  bool scanned = false; // Chống quét trùng trong một lần xử lý
   List<Map<String, dynamic>> partners = [];
   bool isLoadingPartners = false;
+  late AnimationController _animationController;
+  late Animation<double> _scanAnimation;
 
   @override
   void initState() {
     super.initState();
     _loadPartners();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _scanAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPartners() async {
@@ -28,9 +46,9 @@ class _ScanPageState extends State<ScanQR> {
         partners = List<Map<String, dynamic>>.from(response);
       });
     } catch (e) {
-      // Fallback: dùng danh sách hardcode nếu API fail
+      // Fallback: dùng danh sách cứng nếu API lỗi
       setState(() {
-        partners = [
+        partners = const [
           {'name': 'May Cha'},
           {'name': 'TuTiMi'},
           {'name': 'Sunday Basic'},
@@ -48,19 +66,36 @@ class _ScanPageState extends State<ScanQR> {
     }
   }
 
+  /// Xử lý khi quét được mã QR
   Future<void> handleQR(String raw) async {
     if (scanned) return;
     scanned = true;
 
     final parts = raw.split('|');
-    if (parts.length != 2 || parts[0] != 'USERQR') {
-      showMsg('QR không hợp lệ');
+    final type = parts.isNotEmpty ? parts[0] : '';
+
+    // Xử lý theo loại QR
+    if (type == 'USERQR') {
+      await _handleUserQR(parts);
+    } else if (type == 'VOUCHER') {
+      await _handleVoucherQR(parts);
+    } else {
+      _showErrorDialog('QR không hợp lệ', 'Định dạng không được hỗ trợ.');
+      scanned = false;
+    }
+  }
+
+  /// Xử lý QR dành cho user cộng điểm: USERQR|username
+  Future<void> _handleUserQR(List<String> parts) async {
+    if (parts.length != 2) {
+      _showErrorDialog('QR không hợp lệ', 'Thiếu thông tin username.');
       scanned = false;
       return;
     }
 
     final username = parts[1];
 
+    // Hiển thị dialog nhập thông tin cộng điểm
     final result = await showDialog<_ScanResult>(
       context: context,
       barrierDismissible: false,
@@ -76,8 +111,8 @@ class _ScanPageState extends State<ScanQR> {
       return;
     }
 
+    // Gọi API cộng điểm
     try {
-      /// 🔥 GỌI API THAY VÌ SHAREDPREFERENCES
       final res = await ApiService.addPointByQR(
         username: username,
         partner: result.partner,
@@ -87,59 +122,197 @@ class _ScanPageState extends State<ScanQR> {
 
       if (!mounted) return;
 
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          contentPadding: const EdgeInsets.all(24),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.eco, color: Colors.green, size: 48),
-              const SizedBox(height: 12),
-              const Text(
-                'Cộng điểm thành công 🎉',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '+${result.point} điểm cho $username',
-                style: const TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Tổng điểm: ${res["point"]}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Đóng'),
-              ),
-            ],
-          ),
-        ),
+      // Hiển thị popup thành công đẹp mắt
+      await _showSuccessDialog(
+        title: 'Cộng điểm thành công',
+        content: '+${result.point} điểm cho $username',
+        extra: 'Tổng điểm: ${res["point"]}',
+        icon: Icons.eco,
       );
 
-      /// 🔙 QUAY VỀ MANAGEMENT → reload
+      // Quay về màn hình trước với kết quả true để reload nếu cần
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      showMsg('❌ Lỗi cộng điểm: $e');
+      _showErrorDialog('Lỗi cộng điểm', _parseErrorMessage(e));
       scanned = false;
     }
   }
 
-  void showMsg(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  /// Xử lý QR voucher: VOUCHER|voucherId|username|point|partner|timestamp
+  Future<void> _handleVoucherQR(List<String> parts) async {
+    if (parts.length != 6) {
+      _showErrorDialog('QR không hợp lệ', 'Dữ liệu voucher không đầy đủ.');
+      scanned = false;
+      return;
+    }
+
+    final voucherId = parts[1];
+    final username = parts[2];
+    final point = int.tryParse(parts[3]) ?? 0;
+    final partner = parts[4];
+    final timestamp = parts[5]; // có thể dùng để kiểm tra thời gian nếu cần
+
+    if (voucherId.isEmpty || point <= 0 || partner.isEmpty) {
+      _showErrorDialog('QR không hợp lệ', 'Thông tin voucher không chính xác.');
+      scanned = false;
+      return;
+    }
+
+    // Hiển thị dialog xác nhận sử dụng voucher
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _VoucherConfirmDialog(
+        voucherId: voucherId,
+        username: username,
+        point: point,
+        partner: partner,
+      ),
+    );
+
+    if (confirm != true) {
+      scanned = false;
+      return;
+    }
+
+    // Hiển thị loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final success = await ApiService.markVoucherUsed(voucherId);
+      if (mounted) Navigator.pop(context); // đóng loading
+
+      if (success) {
+        await _showSuccessDialog(
+          title: 'Sử dụng voucher thành công',
+          content: 'Voucher $partner đã được xác nhận.',
+          extra: 'Người dùng: $username',
+          icon: Icons.verified,
+        );
+        if (mounted) Navigator.pop(context, true); // quay về và reload
+      } else {
+        // Trường hợp API trả về false nhưng không throw exception
+        // Có thể do voucher đã dùng hoặc lỗi khác, cần phân tích thêm
+        // Ở đây ta giả định backend throw exception khi có lỗi, nên ít khi vào đây
+        _showErrorDialog('Lỗi', 'Không thể đánh dấu voucher đã sử dụng.');
+        scanned = false;
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // đóng loading
+      final errorMsg = _parseErrorMessage(e);
+      // Kiểm tra nếu lỗi là do voucher đã được sử dụng
+      if (errorMsg.toLowerCase().contains('already used') ||
+          errorMsg.toLowerCase().contains('đã sử dụng')) {
+        _showErrorDialog(
+          'Voucher đã được sử dụng',
+          'Voucher này đã được quét và xác nhận trước đó.',
+        );
+      } else {
+        _showErrorDialog('Lỗi kết nối', errorMsg);
+      }
+      scanned = false;
+    }
+  }
+
+  /// Trích xuất thông báo lỗi từ exception
+  String _parseErrorMessage(dynamic e) {
+    if (e is Exception) {
+      return e.toString().replaceAll('Exception: ', '');
+    }
+    return e.toString();
+  }
+
+  /// Hiển thị dialog lỗi chung
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.error, color: Colors.red[700]),
+            const SizedBox(width: 8),
+            Text(title),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Hiển thị popup thành công đẹp mắt
+  Future<void> _showSuccessDialog({
+    required String title,
+    required String content,
+    String? extra,
+    required IconData icon,
+  }) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.green, size: 48),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              content,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            if (extra != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                extra,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -159,14 +332,25 @@ class _ScanPageState extends State<ScanQR> {
             },
           ),
           Container(color: Colors.black.withOpacity(0.45)),
+          // Khung quét có animation
           Center(
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.greenAccent, width: 3),
-                borderRadius: BorderRadius.circular(18),
-              ),
+            child: AnimatedBuilder(
+              animation: _scanAnimation,
+              builder: (context, child) {
+                return Container(
+                  width: 260,
+                  height: 260,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Colors.greenAccent.withOpacity(
+                        0.7 + 0.3 * _scanAnimation.value,
+                      ),
+                      width: 3,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                );
+              },
             ),
           ),
           Positioned(
@@ -191,7 +375,7 @@ class _ScanPageState extends State<ScanQR> {
 }
 
 /// =======================
-/// MODEL KẾT QUẢ
+/// KẾT QUẢ TỪ DIALOG NHẬP THÔNG TIN CỘNG ĐIỂM
 /// =======================
 class _ScanResult {
   final int point;
@@ -206,7 +390,112 @@ class _ScanResult {
 }
 
 /// =======================
-/// DIALOG NHẬP THÔNG TIN
+/// DIALOG XÁC NHẬN SỬ DỤNG VOUCHER
+/// =======================
+class _VoucherConfirmDialog extends StatelessWidget {
+  final String voucherId;
+  final String username;
+  final int point;
+  final String partner;
+
+  const _VoucherConfirmDialog({
+    required this.voucherId,
+    required this.username,
+    required this.point,
+    required this.partner,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.confirmation_number,
+                color: Colors.green,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Xác nhận sử dụng voucher',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(Icons.person, 'Người dùng', username),
+            _buildInfoRow(Icons.store, 'Đối tác', partner),
+            _buildInfoRow(Icons.star, 'Điểm', '$point điểm'),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Hủy'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Xác nhận'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// =======================
+/// DIALOG NHẬP THÔNG TIN CỘNG ĐIỂM
 /// =======================
 class _AddPointDialog extends StatefulWidget {
   final String username;
@@ -228,12 +517,10 @@ class _AddPointDialogState extends State<_AddPointDialog> {
   final moneyController = TextEditingController();
 
   String selectedPartner = '';
-  bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    // Chọn partner đầu tiên trong danh sách
     if (widget.partners.isNotEmpty) {
       selectedPartner = widget.partners[0]['name'] ?? '';
     }
@@ -243,38 +530,41 @@ class _AddPointDialogState extends State<_AddPointDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text('Cộng điểm'),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-      content: SingleChildScrollView(
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.person_add, color: Colors.green),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Cộng điểm cho user',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Text(
-              'User: ${widget.username}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              'Username: ${widget.username}',
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 12),
 
-            // Partner Dropdown
+            // Chọn đối tác
             if (widget.isLoadingPartners)
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Đang tải danh sách đối tác...'),
-                  SizedBox(height: 8),
-                  LinearProgressIndicator(),
-                ],
-              )
+              const LinearProgressIndicator()
             else
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,9 +595,7 @@ class _AddPointDialogState extends State<_AddPointDialog> {
                         }).toList(),
                         onChanged: (String? newValue) {
                           if (newValue != null) {
-                            setState(() {
-                              selectedPartner = newValue;
-                            });
+                            setState(() => selectedPartner = newValue);
                           }
                         },
                       ),
@@ -316,9 +604,9 @@ class _AddPointDialogState extends State<_AddPointDialog> {
                 ],
               ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Mã Bill
+            // Mã bill
             TextField(
               controller: billController,
               decoration: const InputDecoration(
@@ -339,17 +627,10 @@ class _AddPointDialogState extends State<_AddPointDialog> {
                 hintText: 'Ví dụ: 50000',
                 suffixText: 'VNĐ',
               ),
-              onChanged: (value) {
-                // Cập nhật điểm tự động khi nhập tiền
-                final money = int.tryParse(value) ?? 0;
-                if (money > 0) {
-                  final points = calcPoint(money);
-                  // Có thể hiển thị điểm dự tính ở đây nếu cần
-                }
-              },
+              onChanged: (_) => setState(() {}),
             ),
 
-            // Hiển thị điểm tính được
+            // Hiển thị điểm
             if (moneyController.text.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -367,66 +648,76 @@ class _AddPointDialogState extends State<_AddPointDialog> {
                 ),
               ),
 
-            const SizedBox(height: 4),
-            Text(
-              'Công thức: 2 điểm / 1000 VNĐ',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                fontStyle: FontStyle.italic,
-              ),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Hủy'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      final money = int.tryParse(moneyController.text) ?? 0;
+                      if (selectedPartner.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Vui lòng chọn đối tác'),
+                          ),
+                        );
+                        return;
+                      }
+                      if (billController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Vui lòng nhập mã bill'),
+                          ),
+                        );
+                        return;
+                      }
+                      if (money <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Vui lòng nhập số tiền hợp lệ'),
+                          ),
+                        );
+                        return;
+                      }
+
+                      Navigator.pop(
+                        context,
+                        _ScanResult(
+                          point: calcPoint(money),
+                          partner: selectedPartner,
+                          billCode: billController.text.trim(),
+                        ),
+                      );
+                    },
+                    child: const Text('Xác nhận'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Hủy'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          onPressed: () {
-            final money = int.tryParse(moneyController.text) ?? 0;
-
-            if (selectedPartner.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Vui lòng chọn đối tác')),
-              );
-              return;
-            }
-
-            if (billController.text.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Vui lòng nhập mã bill')),
-              );
-              return;
-            }
-
-            if (money <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Vui lòng nhập số tiền hợp lệ')),
-              );
-              return;
-            }
-
-            Navigator.pop(
-              context,
-              _ScanResult(
-                point: calcPoint(money),
-                partner: selectedPartner,
-                billCode: billController.text.trim(),
-              ),
-            );
-          },
-          child: const Text('Xác nhận'),
-        ),
-      ],
     );
   }
 
